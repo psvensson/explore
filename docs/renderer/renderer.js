@@ -77,7 +77,7 @@ export function updateDungeonMesh(mesh) {
 }
 
 // Browser auto-bootstrap (skip during Jest tests)
-if (typeof window !== 'undefined' && !process.env.JEST_WORKER_ID) {
+if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
   // Only bootstrap once
   if (!window.__DUNGEON_RENDERER_BOOTSTRAPPED) {
     window.__DUNGEON_RENDERER_BOOTSTRAPPED = true;
