@@ -1,3 +1,5 @@
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
+
 // This file contains the logic for the three.js 3D renderer. It sets up the scene, camera, and renderer, and includes functions for zooming and panning the camera.
 
 let scene, camera, renderer, controls;
