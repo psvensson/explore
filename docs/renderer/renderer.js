@@ -1,46 +1,95 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
+// Renderer module: provides createRenderer for initializing a Three.js scene.
+// Dependency injection friendly for tests (pass in mock THREE).
+// In browser (non-test) it will auto-bootstrap by dynamically importing Three.js.
 
-// This file contains the logic for the three.js 3D renderer. It sets up the scene, camera, and renderer, and includes functions for zooming and panning the camera.
+let lastInstance = null;
 
-let scene, camera, renderer, controls;
+export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
+  if (!THREE) throw new Error('THREE dependency missing');
+  const container = document.getElementById(containerId);
+  if (!container) throw new Error(`Container element #${containerId} not found`);
 
-function init() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    
-    renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-    
+  const width = container.clientWidth || 800;
+  const height = container.clientHeight || 600;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+  camera.position.set(0, 20, 50);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+
+  // Optional OrbitControls if available
+  let controls = null;
+  if (THREE.OrbitControls) {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
-    controls.dampingFactor = 0.25;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
-    
-    camera.position.set(0, 5, 10);
-    controls.update();
-    
-    window.addEventListener('resize', onWindowResize, false);
-}
+    controls.minDistance = 10;
+    controls.maxDistance = 200;
+  }
 
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-}
+  // Basic light + grid
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(10, 20, 10);
+  scene.add(light);
+  if (THREE.GridHelper) {
+    const grid = new THREE.GridHelper(100, 50);
+    scene.add(grid);
+  }
 
-function animate() {
+  function animate() {
+    if (lastInstance !== instance) return; // stop old loops after re-init
     requestAnimationFrame(animate);
-    controls.update(); // only required if controls.enableDamping = true, or if controls.autoRotate = true
+    if (controls && controls.update) controls.update();
     renderer.render(scene, camera);
+  }
+
+  function resize() {
+    const w = container.clientWidth || window.innerWidth;
+    const h = container.clientHeight || window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  window.addEventListener('resize', resize);
+
+  const instance = { scene, camera, renderer, controls, resize };
+  lastInstance = instance;
+  animate();
+  return instance;
 }
 
-function addCube() {
-    const geometry = new THREE.BoxGeometry();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const cube = new THREE.Mesh(geometry, material);
-    scene.add(cube);
+// Update (replace) dungeon mesh in scene.
+export function updateDungeonMesh(mesh) {
+  if (!lastInstance) return;
+  const { scene } = lastInstance;
+  // Keep lights & helpers (first few items)
+  const preserve = new Set();
+  scene.children.forEach((child, idx) => { if (idx < 3) preserve.add(child); });
+  // Remove others
+  for (let i = scene.children.length - 1; i >= 0; i--) {
+    if (!preserve.has(scene.children[i])) scene.remove(scene.children[i]);
+  }
+  if (mesh) scene.add(mesh);
 }
 
-init();
-animate();
+// Browser auto-bootstrap (skip during Jest tests)
+if (typeof window !== 'undefined' && !process.env.JEST_WORKER_ID) {
+  // Only bootstrap once
+  if (!window.__DUNGEON_RENDERER_BOOTSTRAPPED) {
+    window.__DUNGEON_RENDERER_BOOTSTRAPPED = true;
+    Promise.all([
+      import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'),
+      import('https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/controls/OrbitControls.js')
+        .catch(() => ({}))
+    ]).then(([THREE, controlsModule]) => {
+      if (controlsModule.OrbitControls) {
+        THREE.OrbitControls = controlsModule.OrbitControls; // attach for createRenderer to detect
+      }
+      createRenderer({ THREE });
+    }).catch(err => console.error('Three.js load failed', err));
+  }
+}
