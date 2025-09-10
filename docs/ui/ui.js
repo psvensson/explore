@@ -38,7 +38,7 @@ export function initUI(rootId = 'control-panel') {
   return { log };
 }
 
-if (typeof window !== 'undefined' && !process.env.JEST_WORKER_ID) {
+if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
   document.addEventListener('DOMContentLoaded', () => {
     try { initUI(); } catch(e){ console.error(e); }
   });
