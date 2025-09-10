@@ -26,9 +26,11 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 10;
-    controls.maxDistance = 200;
+    controls.enablePan = true;
+    controls.screenSpacePanning = true; // allow true 2D style panning
+    controls.enableRotate = true;
+    controls.minDistance = 5;
+    controls.maxDistance = 300;
   }
 
   // Basic light + grid
@@ -57,6 +59,46 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   window.addEventListener('resize', resize);
 
   const instance = { scene, camera, renderer, controls, resize };
+  // Helper APIs
+  instance.resetView = function resetView() {
+    camera.position.set(0, 20, 50);
+    if (controls) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+  };
+  instance.setZoomDistance = function setZoomDistance(dist) {
+    if (!controls) return;
+    const target = controls.target.clone();
+    const dir = camera.position.clone().sub(target).normalize();
+    const clamped = Math.min(Math.max(dist, controls.minDistance || 5), controls.maxDistance || 300);
+    camera.position.copy(dir.multiplyScalar(clamped).add(target));
+    controls.update();
+  };
+  instance.pan = function pan(dx, dy) {
+    if (!controls) return;
+    // Basic pan implementation relative to current distance
+    const distance = camera.position.distanceTo(controls.target);
+    const panSpeed = distance * 0.0015; // scale with distance
+    const x = -dx * panSpeed;
+    const y = dy * panSpeed;
+    const te = camera.matrix.elements;
+    // camera basis vectors
+    const vx = { x: te[0], y: te[1], z: te[2] };
+    const vy = { x: te[4], y: te[5], z: te[6] };
+    function apply(v, s){ controls.target.addScalar ? null : null; }
+    // Convert to THREE.Vector3 using camera right & up
+    const right = new THREE.Vector3(vx.x, vx.y, vx.z).multiplyScalar(x);
+    const up = new THREE.Vector3(vy.x, vy.y, vy.z).multiplyScalar(y);
+    controls.target.add(right).add(up);
+    camera.position.add(right).add(up);
+    controls.update();
+  };
+  // expose globally for UI hooks
+  if (typeof window !== 'undefined') {
+    window.dungeonRenderer = instance;
+  }
+
   lastInstance = instance;
   animate();
   return instance;
