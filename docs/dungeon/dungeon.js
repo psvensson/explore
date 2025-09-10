@@ -43,7 +43,7 @@ export class DungeonGenerator {
     }
 }
 
-if (typeof window !== 'undefined' && !process.env.JEST_WORKER_ID) {
+if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
     window.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('dungeon-container');
         if (container) {
