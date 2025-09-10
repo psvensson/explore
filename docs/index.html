@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dungeon Web</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <header>
+        <h1>My Dungeon Web</h1>
+        <p>Explore and generate dungeons in a 3D environment.</p>
+    </header>
+    <main>
+        <section id="ui-controls">
+            <h2>Controls</h2>
+            <!-- UI controls will be dynamically generated here -->
+        </section>
+        <section id="renderer">
+            <h2>3D Renderer</h2>
+            <div id="threejs-canvas"></div>
+        </section>
+        <section id="dungeon-generator">
+            <h2>Dungeon Generator</h2>
+            <button id="generate-dungeon">Generate Dungeon</button>
+            <div id="dungeon-output"></div>
+        </section>
+    </main>
+    <script src="scripts/ui.js"></script>
+    <script src="scripts/renderer.js"></script>
+    <script src="scripts/dungeon.js"></script>
+</body>
+</html>
