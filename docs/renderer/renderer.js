@@ -112,15 +112,15 @@ export function updateDungeonMesh(mesh) {
 
 // Browser auto-bootstrap (skip during Jest tests)
 if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
-  // Only bootstrap once
   if (!window.__DUNGEON_RENDERER_BOOTSTRAPPED) {
     window.__DUNGEON_RENDERER_BOOTSTRAPPED = true;
     Promise.all([
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'),
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/controls/OrbitControls.js')
-    ]).then(([THREE, controlsModule]) => {
+    ]).then(([threeModule, controlsModule]) => {
       if (!controlsModule.OrbitControls) throw new Error('Failed to load OrbitControls');
-      THREE.OrbitControls = controlsModule.OrbitControls; // attach for createRenderer to detect
+      // Create an extensible copy of the module namespace so we can attach OrbitControls
+      const THREE = { ...threeModule, OrbitControls: controlsModule.OrbitControls };
       createRenderer({ THREE });
     }).catch(err => console.error('Three.js load failed', err));
   }
