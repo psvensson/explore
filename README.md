@@ -1,45 +1,58 @@
 # My Dungeon Web
-
-My Dungeon Web is a web-based application that allows users to explore and interact with procedurally generated dungeons in a 3D environment. The project is built using plain vanilla HTML, CSS, and ES6 JavaScript, and leverages the three.js library for rendering 3D graphics.
+My Dungeon Web is a web-based application for exploring and interacting with procedurally generated dungeons in a 3D environment. The project uses vanilla HTML, CSS, ES6 JavaScript, and the three.js library for 3D rendering.
 
 ## Project Structure
 
-The project is organized into the following main components:
+The project is organized as follows:
 
-- **UI**: This component provides controls and widgets for users to interact with the dungeon generator and the 3D renderer. It allows users to customize parameters and visualize the generated dungeons.
-  
-- **3D Renderer**: This component utilizes three.js to create a 3D representation of the generated dungeon. It includes features for zooming and panning the camera, providing an immersive experience for users.
-  
-- **Dungeon Generator**: This component implements algorithms for generating dungeons based on user-defined parameters. It visualizes the generated dungeons in the 3D renderer.
+```
+my-dungeon-web/
+├── docs/                # Static site files (index.html, assets, styles, scripts)
+│   ├── index.html
+│   ├── css/
+│   ├── js/
+│   └── assets/
+├── src/                 # Source code for dungeon generation and rendering
+│   ├── generator/
+│   ├── renderer/
+│   └── ui/
+├── LICENSE
+├── README.md
+└── package.json         # (optional, if using npm for dependencies)
+```
+
+- **docs/**: Contains the static files for deployment (HTML, CSS, JS, assets).
+- **src/**: Contains modular source code for the dungeon generator, 3D renderer, and UI logic.
+- **LICENSE** and **README.md**: Project documentation and license information.
 
 ## Getting Started
 
-To get started with the project, clone the repository and open the `docs/index.html` file in your web browser. The application is designed to be hosted on GitHub Pages, so you can also deploy it directly to GitHub.io for easy access.
+Clone the repository and open `docs/index.html` in your web browser. The app is designed for GitHub Pages deployment.
 
 ## Installation
 
 1. Clone the repository:
-   ```
-   git clone <repository-url>
-   ```
+    ```sh
+    git clone <repository-url>
+    ```
 
 2. Navigate to the project directory:
-   ```
-   cd my-dungeon-web
-   ```
+    ```sh
+    cd my-dungeon-web
+    ```
 
-3. Open `docs/index.html` in your preferred web browser.
+3. Open `docs/index.html` in your preferred browser.
 
 ## Usage
 
-- Use the UI controls to customize the dungeon generation parameters.
-- Interact with the 3D renderer to explore the generated dungeon.
-- Adjust the camera view using zoom and pan controls.
+- Use UI controls to customize dungeon generation.
+- Explore the dungeon in 3D using zoom and pan.
+- Adjust parameters and view updates in real time.
 
 ## Contributing
 
-Contributions are welcome! If you would like to contribute to the project, please fork the repository and submit a pull request.
+Fork the repository and submit a pull request to contribute.
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+MIT License. See LICENSE for details.
