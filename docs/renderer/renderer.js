@@ -1,11 +1,12 @@
 // Renderer module: provides createRenderer for initializing a Three.js scene.
-// Dependency injection friendly for tests (pass in mock THREE).
-// In browser (non-test) it will auto-bootstrap by dynamically importing Three.js.
+// Dependency injection friendly for tests (pass in mock THREE with OrbitControls).
+// In browser (non-test) it will auto-bootstrap by dynamically importing Three.js and OrbitControls.
 
 let lastInstance = null;
 
 export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   if (!THREE) throw new Error('THREE dependency missing');
+  if (!THREE.OrbitControls) throw new Error('THREE.OrbitControls missing');
   const container = document.getElementById(containerId);
   if (!container) throw new Error(`Container element #${containerId} not found`);
 
@@ -20,18 +21,15 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
-  // Optional OrbitControls if available
-  let controls = null;
-  if (THREE.OrbitControls) {
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enablePan = true;
-    controls.screenSpacePanning = true; // allow true 2D style panning
-    controls.enableRotate = true;
-    controls.minDistance = 5;
-    controls.maxDistance = 300;
-  }
+  // Always create OrbitControls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.enablePan = true;
+  controls.screenSpacePanning = true;
+  controls.enableRotate = true;
+  controls.minDistance = 5;
+  controls.maxDistance = 300;
 
   // Basic light + grid
   const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -45,7 +43,7 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   function animate() {
     if (lastInstance !== instance) return; // stop old loops after re-init
     requestAnimationFrame(animate);
-    if (controls && controls.update) controls.update();
+    controls.update();
     renderer.render(scene, camera);
   }
 
@@ -62,13 +60,10 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   // Helper APIs
   instance.resetView = function resetView() {
     camera.position.set(0, 20, 50);
-    if (controls) {
-      controls.target.set(0, 0, 0);
-      controls.update();
-    }
+    controls.target.set(0, 0, 0);
+    controls.update();
   };
   instance.setZoomDistance = function setZoomDistance(dist) {
-    if (!controls) return;
     const target = controls.target.clone();
     const dir = camera.position.clone().sub(target).normalize();
     const clamped = Math.min(Math.max(dist, controls.minDistance || 5), controls.maxDistance || 300);
@@ -76,8 +71,6 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     controls.update();
   };
   instance.pan = function pan(dx, dy) {
-    if (!controls) return;
-    // Basic pan implementation relative to current distance
     const distance = camera.position.distanceTo(controls.target);
     const panSpeed = distance * 0.0015; // scale with distance
     const x = -dx * panSpeed;
@@ -86,7 +79,6 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     // camera basis vectors
     const vx = { x: te[0], y: te[1], z: te[2] };
     const vy = { x: te[4], y: te[5], z: te[6] };
-    function apply(v, s){ controls.target.addScalar ? null : null; }
     // Convert to THREE.Vector3 using camera right & up
     const right = new THREE.Vector3(vx.x, vx.y, vx.z).multiplyScalar(x);
     const up = new THREE.Vector3(vy.x, vy.y, vy.z).multiplyScalar(y);
@@ -126,11 +118,9 @@ if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process
     Promise.all([
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'),
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/controls/OrbitControls.js')
-        .catch(() => ({}))
     ]).then(([THREE, controlsModule]) => {
-      if (controlsModule.OrbitControls) {
-        THREE.OrbitControls = controlsModule.OrbitControls; // attach for createRenderer to detect
-      }
+      if (!controlsModule.OrbitControls) throw new Error('Failed to load OrbitControls');
+      THREE.OrbitControls = controlsModule.OrbitControls; // attach for createRenderer to detect
       createRenderer({ THREE });
     }).catch(err => console.error('Three.js load failed', err));
   }
