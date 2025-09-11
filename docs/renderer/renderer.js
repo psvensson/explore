@@ -14,15 +14,37 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   const height = container.clientHeight || 600;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-  camera.position.set(0, 20, 50);
+  const orbitCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 2000);
+  orbitCamera.position.set(0, 40, 110);
+  // FPS camera (initially inactive)
+  const fpsCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1500);
+  fpsCamera.position.set(0, 15, 30);
+  if (fpsCamera.rotation && typeof fpsCamera.rotation === 'object') {
+    fpsCamera.rotation.order = 'YXZ';
+  }
+  if (!fpsCamera.userData) fpsCamera.userData = {};
+  fpsCamera.userData.keep = true; // ensure not removed when swapping meshes
+  // Attach a headlamp light (if available)
+  if (THREE.PointLight) {
+    const lamp = new THREE.PointLight(0xffffff, 1.2, 90, 2);
+    if (lamp.position && lamp.position.set) lamp.position.set(0, 0, -2); // slightly behind camera
+    lamp.userData = { keep: true };
+    if (fpsCamera.add) fpsCamera.add(lamp);
+  } else if (THREE.SpotLight) {
+    const spot = new THREE.SpotLight(0xffffff, 1.1, 120, Math.PI/4, 0.3, 2);
+    if (spot.position && spot.position.set) spot.position.set(0,0,0);
+    if (spot.target && spot.target.position && spot.target.position.set) spot.target.position.set(0,0,-5);
+    if (fpsCamera.add){ fpsCamera.add(spot); if (spot.target) fpsCamera.add(spot.target); }
+  }
+  scene.add(fpsCamera);
+  let activeCamera = orbitCamera;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
   // Always create OrbitControls
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  const controls = new THREE.OrbitControls(orbitCamera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.enablePan = true;
@@ -60,42 +82,85 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   }
   if (renderer.physicallyCorrectLights !== undefined) renderer.physicallyCorrectLights = true;
 
+  let lastTime = performance && performance.now ? performance.now() : Date.now();
   function animate() {
     if (lastInstance !== instance) return; // stop old loops after re-init
     requestAnimationFrame(animate);
+    const now = performance && performance.now ? performance.now() : Date.now();
+    const dt = Math.min(0.1, (now - lastTime) / 1000); // clamp delta
+    lastTime = now;
+    if (mode === 'fps') updateFPS(dt);
     controls.update();
-    renderer.render(scene, camera);
+    renderer.render(scene, activeCamera);
   }
 
   function resize() {
     const w = container.clientWidth || window.innerWidth;
     const h = container.clientHeight || window.innerHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    orbitCamera.aspect = w / h;
+    orbitCamera.updateProjectionMatrix();
+    fpsCamera.aspect = w / h;
+    fpsCamera.updateProjectionMatrix();
     renderer.setSize(w, h);
   }
   window.addEventListener('resize', resize);
 
-  const instance = { scene, camera, renderer, controls, resize };
+  let mode = 'orbit';
+  const keyState = Object.create(null);
+  let yaw = 0, pitch = 0; // radians for fps camera
+  const moveSpeed = 25; // units per second
+  const lookSpeed = 0.0025;
+  function updateFPS(dt){
+    // Movement vector in camera local space
+    const forward = new THREE.Vector3(0,0,-1).applyEuler(fpsCamera.rotation);
+    const right = new THREE.Vector3(1,0,0).applyEuler(fpsCamera.rotation);
+    forward.y = 0; right.y = 0; forward.normalize(); right.normalize();
+    const up = new THREE.Vector3(0,1,0);
+    let vel = new THREE.Vector3();
+    if (keyState['KeyW']) vel.add(forward);
+    if (keyState['KeyS']) vel.sub(forward);
+    if (keyState['KeyD']) vel.add(right);
+    if (keyState['KeyA']) vel.sub(right);
+    if (keyState['Space']) vel.add(up);
+    if (keyState['ShiftLeft'] || keyState['ShiftRight']) vel.sub(up);
+    if (vel.lengthSq()>0) vel.normalize().multiplyScalar(moveSpeed * dt);
+    fpsCamera.position.add(vel);
+  }
+  function enableFPS(){
+    mode='fps'; activeCamera = fpsCamera; controls.enabled=false; lockPointer(); }
+  function enableOrbit(){ mode='orbit'; activeCamera = orbitCamera; controls.enabled=true; unlockPointer(); }
+  function toggleCamera(){ mode==='orbit'?enableFPS():enableOrbit(); }
+  function lockPointer(){ if (isTest) return; const el=renderer.domElement; if (el.requestPointerLock) el.requestPointerLock(); }
+  function unlockPointer(){ if (isTest) return; if (document.exitPointerLock) document.exitPointerLock(); }
+  function onMouseMove(e){ if (mode!=='fps') return; if (!document.pointerLockElement && !isTest) return; yaw -= e.movementX * lookSpeed; pitch -= e.movementY * lookSpeed; const maxPitch = Math.PI/2 - 0.01; pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch)); fpsCamera.rotation.set(pitch, yaw, 0); }
+  const isTest = typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID;
+  if (!isTest){
+    window.addEventListener('keydown', e=>{ keyState[e.code]=true; if (e.code==='KeyF') toggleCamera(); });
+    window.addEventListener('keyup', e=>{ keyState[e.code]=false; });
+    window.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('click', ()=>{ if (mode==='fps') lockPointer(); });
+    document.addEventListener('pointerlockchange', ()=>{ if (mode==='fps' && !document.pointerLockElement){ /* lost lock -> drop to orbit? */ } });
+  }
+  const instance = { scene, camera: activeCamera, orbitCamera, fpsCamera, renderer, controls, resize, enableFPS, enableOrbit, toggleCamera, get mode(){ return mode; } };
   // Helper APIs
   instance.resetView = function resetView() {
-    camera.position.set(0, 20, 50);
+    orbitCamera.position.set(0, 40, 110);
     controls.target.set(0, 0, 0);
     controls.update();
   };
   instance.setZoomDistance = function setZoomDistance(dist) {
     const target = controls.target.clone();
-    const dir = camera.position.clone().sub(target).normalize();
+    const dir = orbitCamera.position.clone().sub(target).normalize();
     const clamped = Math.min(Math.max(dist, controls.minDistance || 5), controls.maxDistance || 300);
-    camera.position.copy(dir.multiplyScalar(clamped).add(target));
+    orbitCamera.position.copy(dir.multiplyScalar(clamped).add(target));
     controls.update();
   };
   instance.pan = function pan(dx, dy) {
-    const distance = camera.position.distanceTo(controls.target);
+    const distance = orbitCamera.position.distanceTo(controls.target);
     const panSpeed = distance * 0.0015; // scale with distance
     const x = -dx * panSpeed;
     const y = dy * panSpeed;
-    const te = camera.matrix.elements;
+    const te = orbitCamera.matrix.elements;
     // camera basis vectors
     const vx = { x: te[0], y: te[1], z: te[2] };
     const vy = { x: te[4], y: te[5], z: te[6] };
@@ -103,12 +168,12 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     const right = new THREE.Vector3(vx.x, vx.y, vx.z).multiplyScalar(x);
     const up = new THREE.Vector3(vy.x, vy.y, vy.z).multiplyScalar(y);
     controls.target.add(right).add(up);
-    camera.position.add(right).add(up);
+    orbitCamera.position.add(right).add(up);
     controls.update();
   };
   // expose globally for UI hooks
   if (typeof window !== 'undefined') {
-    window.dungeonRenderer = instance;
+  window.dungeonRenderer = instance;
     // Provide WFC generation hook if dependencies available
   window.generateWFCDungeon = async function({x=3,y=3,z=3}={}) {
       try {
@@ -158,7 +223,7 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
           gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); // x<-tileX,z<-tileZ,y<-tileY mapping
           group.add(gm);
         });
-        updateDungeonMesh(group);
+  updateDungeonMesh(group);
       } catch(e){ console.error('WFC generation failed', e); }
     };
   }
@@ -171,12 +236,27 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
 // Update (replace) dungeon mesh in scene.
 export function updateDungeonMesh(mesh) {
   if (!lastInstance) return;
-  const { scene } = lastInstance;
+  const { scene, fpsCamera } = lastInstance;
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const child = scene.children[i];
     if (!(child && child.userData && child.userData.keep)) scene.remove(child);
   }
-  if (mesh) scene.add(mesh);
+  if (mesh){
+    // Compute bounding box to reposition FPS camera near dungeon
+    if (scene && scene.add) scene.add(mesh);
+    try {
+      if (THREE && THREE.Box3 && THREE.Vector3) {
+        const box = new THREE.Box3().setFromObject(mesh);
+        if (box.isEmpty && box.isEmpty()) { /* ignore */ } else {
+          const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3(); box.getCenter(center);
+            // Place fps camera just above center and offset back on Z
+            fpsCamera.position.set(center.x + size.x * 0.1, center.y + Math.max(5, size.y * 0.3), center.z + size.z * 0.8 + 10);
+        }
+      }
+    } catch(e){ /* non-fatal */ }
+  }
 }
 
 // Browser auto-bootstrap (skip during Jest tests)
