@@ -134,11 +134,11 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       case 'ceiling': {
         g = new BG(full, full*0.1, full); break;
       }
-      case 'wall_xMajor': { // wall stretches along X, thin along Z
-        g = new BG(full, full, full*0.1); break;
+      case 'wall_xMajor': { // spans full tile along X, thin along Z
+        g = new BG(unit, full, full*0.1); break;
       }
-      case 'wall_zMajor': { // wall stretches along Z, thin along X
-        g = new BG(full*0.1, full, full); break;
+      case 'wall_zMajor': { // spans full tile along Z, thin along X
+        g = new BG(full*0.1, full, unit); break;
       }
       case 'wall_pillar': { // ambiguous -> thin both directions
         g = new BG(full*0.3, full, full*0.3); break;
@@ -195,6 +195,17 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         else if (hasX && hasZ) geomKind='wall_pillar';
         else geomKind='wall_pillar';
       }
+      // For long walls, emit a single mesh per boundary (avoid duplicates from multiple sub-voxels)
+      if (geomKind==='wall_xMajor'){
+        const front = (z<=1);
+        if (!((front && z===0) || (!front && z===2))) continue; // only once per boundary
+        if (x!==1) continue; // pick center column representative
+      } else if (geomKind==='wall_zMajor'){
+        const left = (x<=1);
+        if (!((left && x===0) || (!left && x===2))) continue; // only once per boundary
+        if (z!==1) continue; // pick center row representative
+      }
+
       const geometry = getGeometry(geomKind);
       const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
       if (mesh.position){
@@ -208,7 +219,7 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
           px = unit/2; pz = unit/2; py = y*full + thin/2; // full footprint
         } else if (geomKind==='ceiling' || geomKind==='ceiling_full') {
           px = unit/2; pz = unit/2; py = y*full + full - thin/2;
-        } else if (geomKind==='wall_xMajor') {
+  } else if (geomKind==='wall_xMajor') {
           // Anchor to front or back boundary depending on z index (z<=1 -> front else back)
           pz = (z<=1) ? (0 + thin/2) : (unit - thin/2);
           px = unit/2; // spans entire tile length in X visually when adjacent tiles placed
