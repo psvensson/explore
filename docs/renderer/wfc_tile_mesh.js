@@ -134,17 +134,17 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       case 'ceiling': {
         g = new BG(full, full*0.1, full); break;
       }
-      case 'wall_xMajor': { // spans full tile along X, thin along Z
-        g = new BG(unit, full, full*0.1); break;
+      case 'wall_xMajor': { // spans full tile along X, thin along Z, full height
+        g = new BG(unit, unit, full*0.1); break;
       }
-      case 'wall_zMajor': { // spans full tile along Z, thin along X
-        g = new BG(full*0.1, full, unit); break;
+      case 'wall_zMajor': { // spans full tile along Z, thin along X, full height
+        g = new BG(full*0.1, unit, unit); break;
       }
-      case 'wall_pillar': { // ambiguous -> thin both directions
-        g = new BG(full*0.3, full, full*0.3); break;
+      case 'wall_pillar': { // ambiguous -> thin both directions, full height
+        g = new BG(full*0.3, unit, full*0.3); break;
       }
-      case 'mid': { // fallback mid
-        g = new BG(full*0.6, full, full*0.6); break; }
+      case 'mid': { // fallback mid, full height
+        g = new BG(full*0.6, unit, full*0.6); break; }
       case 'stair': {
         // Keep near full size for readability
         g = new BG(full, full, full); break;
@@ -211,10 +211,10 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       if (mesh.position){
         const full = unit/3;
         const thin = full*0.1;
-        // Default centered
-        let px = x*full + full/2;
-        let py = y*full + full/2;
-        let pz = z*full + full/2;
+  // Default centered; for walls we use full tile height so center at tile center in Y
+  let px = x*full + full/2;
+  let py = unit/2;
+  let pz = z*full + full/2;
         if (geomKind==='floor' || geomKind==='floor_full') {
           px = unit/2; pz = unit/2; py = y*full + thin/2; // full footprint
         } else if (geomKind==='ceiling' || geomKind==='ceiling_full') {
