@@ -5,6 +5,15 @@
 
 import { tilePrototypes } from '../dungeon/tileset.js';
 
+// Internal material cache keyed by the THREE namespace object to avoid mutating
+// the (non-extensible) ES module namespace. Using WeakMap prevents leaks.
+const __WFC_MATERIAL_CACHE = new WeakMap();
+function getMaterialCache(THREE){
+  let c = __WFC_MATERIAL_CACHE.get(THREE);
+  if (!c){ c = {}; __WFC_MATERIAL_CACHE.set(THREE, c); }
+  return c;
+}
+
 // --- Rotation Helpers (Y axis only, matching tileset usage) ---
 export function rotateYOnce(vox){
   // Treat vox[z][y][x]; +90 deg about Y maps (x,z) -> (z, 2-x) keeping y
@@ -106,8 +115,8 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
   const geometry = new (THREE.BoxGeometry||function(){}) (unit/3, unit/3, unit/3);
 
-  // Material cache
-  const cache = THREE.__WFC_MATERIALS__ || (THREE.__WFC_MATERIALS__ = {});
+  // Material cache (per THREE instance)
+  const cache = getMaterialCache(THREE);
   function noiseTexture(color){
     if (!THREE.CanvasTexture || !globalThis.document) return null;
     const size=32; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
