@@ -189,7 +189,7 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       const geometry = getGeometry(geomKind);
       const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
       if (mesh.position){
-        const full = unit;
+        const full = unit/3;
         const thin = full*0.1;
         // Default centered
         let px = x*full + full/2;
