@@ -1,22 +1,24 @@
 /**
  * tileset.js
- * Defines a 3x3x3 voxel tileset for use with an NDWFC3D (3D Wave Function Collapse) system.
+ * Strict 3x3x3 voxel tileset for an NDWFC3D system.
  *
- * Each tile is described by 3 layers (lowest Z first) of 3 strings (rows) containing digit characters.
- * Character legend (proposed – adjust to match ndwfc-tools.js spec):
- *  0 = empty / air
- *  1 = solid wall / floor
- *  2 = stair voxel (special)
+ * FAIL-FAST PHILOSOPHY:
+ *  This module intentionally does NOT attempt graceful degradation. If the required
+ *  global API is missing it will throw immediately so issues surface early instead
+ *  of manifesting as subtle generation bugs later.
  *
- * Transforms follow the NDWFC3D convention (strings composed of '+' separated primitive ops):
- *  rx, ry, rz  (90° rotations about X,Y,Z respectively)
- *  The sequence "ry+ry" means apply 180° about Y, etc.
+ * REQUIRED GLOBAL:
+ *  A function `NDWFC3D(proto)` provided by `ndwfc-tools.js` / `ndwfc.js` that
+ *  registers a prototype tile. Load those scripts BEFORE this file.
  *
- * This file assumes a global (or imported) API provided by ndwfc-tools.js / ndwfc.js exposing
- * an object NDWFC3D with a method registerPrototype(proto) OR addTile / addFromVoxels.
- * Since the exact API surface is unknown at author time, we implement a light abstraction
- * that tries common method names. You should adapt the adapter inside commitTilePrototype()
- * to the actual ndwfc-tools.js API once integrated.
+ * TILE FORMAT:
+ *  Each tile defined by 3 layers (z=0..2) of 3 strings (y rows) of length 3 (x cols).
+ *  Characters: 0 = empty, 1 = solid, 2 = stair/special.
+ *
+ * TRANSFORMS:
+ *  Array of rotation sequences using tokens like ry, rx, rz joined with '+'.
+ *  These are passed through verbatim to NDWFC3D which is responsible for applying
+ *  the canonical transform semantics.
  */
 
 // Stored prototype indices (parallel to order of definition) – external systems can read these.
@@ -43,31 +45,9 @@ function layersToVoxels(layers) {
   });
 }
 
-/**
- * Internal helper to actually register a prototype with NDWFC3D using a best-effort adapter.
- */
 function commitTilePrototype(proto) {
-  // Attempt different possible API shapes – adjust as needed once real API is known.
-  const api = (typeof NDWFC3D !== 'undefined') ? NDWFC3D : null;
-  if (!api) {
-    // Defer: tile will still be listed in tilePrototypes; user can later loop and register.
-    return;
-  }
-  if (typeof api.addTile === 'function') {
-    api.addTile(proto); return;
-  }
-  if (typeof api.registerPrototype === 'function') {
-    api.registerPrototype(proto); return;
-  }
-  if (typeof api.addFromVoxels === 'function') {
-    api.addFromVoxels(proto.voxels, { id: proto.id, tileId: proto.tileId, transforms: proto.transforms });
-    return;
-  }
-  // If none matched, log once.
-  if (!commitTilePrototype.warned) {
-    console.warn('NDWFC3D API shape not recognized – prototypes stored but not registered.');
-    commitTilePrototype.warned = true;
-  }
+  // Assume NDWFC3D global function is loaded (no defensive checks per project policy)
+  NDWFC3D(proto);
 }
 
 /**
@@ -102,7 +82,7 @@ export const addTileFromLayers = createTileFormLayers;
  * skip re-adding if already populated.
  */
 export function initializeTileset() {
-  if (tilePrototypes.length > 0) return; // already initialized
+  if (tilePrototypes.length > 0) return; // idempotent guard
 
   // Empty space (no transforms)
   addTileFromLayers([
