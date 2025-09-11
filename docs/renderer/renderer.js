@@ -31,14 +31,34 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   controls.minDistance = 5;
   controls.maxDistance = 300;
 
-  // Basic light + grid
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(10, 20, 10);
-  scene.add(light);
+  // Lighting setup (improved visibility): directional + optional hemi + ambient
+  if (THREE.DirectionalLight) {
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir.position.set(25, 40, 20);
+    dir.castShadow = !!dir.castShadow;
+    dir.userData = { keep: true };
+    scene.add(dir);
+  }
+  if (THREE.HemisphereLight) {
+    const hemi = new THREE.HemisphereLight(0x99bbff, 0x223344, 0.6);
+    hemi.userData = { keep: true };
+    scene.add(hemi);
+  }
+  if (THREE.AmbientLight) {
+    const amb = new THREE.AmbientLight(0xffffff, 0.35);
+    amb.userData = { keep: true };
+    scene.add(amb);
+  }
   if (THREE.GridHelper) {
-    const grid = new THREE.GridHelper(100, 50);
+    const grid = new THREE.GridHelper(150, 60, 0x336699, 0x224455);
+    grid.userData = { keep: true };
     scene.add(grid);
   }
+  // Tone mapping / color space (safe guards for mocks in tests)
+  if (typeof THREE.sRGBEncoding !== 'undefined') {
+    renderer.outputEncoding = THREE.sRGBEncoding;
+  }
+  if (renderer.physicallyCorrectLights !== undefined) renderer.physicallyCorrectLights = true;
 
   function animate() {
     if (lastInstance !== instance) return; // stop old loops after re-init
@@ -152,12 +172,9 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
 export function updateDungeonMesh(mesh) {
   if (!lastInstance) return;
   const { scene } = lastInstance;
-  // Keep lights & helpers (first few items)
-  const preserve = new Set();
-  scene.children.forEach((child, idx) => { if (idx < 3) preserve.add(child); });
-  // Remove others
   for (let i = scene.children.length - 1; i >= 0; i--) {
-    if (!preserve.has(scene.children[i])) scene.remove(scene.children[i]);
+    const child = scene.children[i];
+    if (!(child && child.userData && child.userData.keep)) scene.remove(child);
   }
   if (mesh) scene.add(mesh);
 }
