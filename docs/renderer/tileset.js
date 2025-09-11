@@ -225,7 +225,7 @@ export function initializeTileset() {
     [ "111",
       "000",
       "101"],
-    [ "101",
+    [ "111",
       "000",
       "101"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
@@ -235,12 +235,12 @@ export function initializeTileset() {
     [ "111",
       "111",
       "111"],
-    [ "111",
+    [ "101",
       "000",
       "101"],
-    [ "111",
-      "111",
-      "111"]
+    [ "101",
+      "000",
+      "101"]
   ], 0, { transforms: [] });
 
   return { emptyWithFloorProtoIdx, solidProtoIdx };

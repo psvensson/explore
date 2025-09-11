@@ -178,29 +178,37 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       else if (y===0){ material = floorMat; geomKind='floor'; }
       else if (y===2){ material = ceilingMat; geomKind='ceiling'; }
       else if (y===1){
-        // Determine wall orientation by neighbor occupancy
-        const left   = x>0 && vox[z][y][x-1]>0;
-        const right  = x<2 && vox[z][y][x+1]>0;
-        const front  = z>0 && vox[z-1][y][x]>0; // negative z
-        const back   = z<2 && vox[z+1][y][x]>0; // positive z
-        const horizX = left || right;
-        const horizZ = front || back;
-        if (horizX && !horizZ) geomKind='wall_xMajor';
-        else if (horizZ && !horizX) geomKind='wall_zMajor';
-        else if (!horizX && !horizZ) geomKind='wall_pillar';
-        else geomKind='wall_pillar'; // junction / corner
+        // Determine orientation heuristically within tile; anchor later by index to span to boundaries.
+        const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
+        const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
+        if (hasX && !hasZ) geomKind='wall_xMajor';
+        else if (hasZ && !hasX) geomKind='wall_zMajor';
+        else if (hasX && hasZ) geomKind='wall_pillar';
+        else geomKind='wall_pillar';
       }
       const geometry = getGeometry(geomKind);
       const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
       if (mesh.position){
-        // Base center position
-        const baseX = x*unit/3 + unit/6;
-        const baseY = y*unit/3 + unit/6;
-        const baseZ = z*unit/3 + unit/6;
-        const full = unit/3;
-        if (geomKind==='floor') mesh.position.set(baseX, y*full + (full*0.05), baseZ); // half of 0.1 thickness
-        else if (geomKind==='ceiling') mesh.position.set(baseX, y*full + full - (full*0.05), baseZ);
-        else mesh.position.set(baseX, baseY, baseZ);
+        const full = unit;
+        const thin = full*0.1;
+        // Default centered
+        let px = x*full + full/2;
+        let py = y*full + full/2;
+        let pz = z*full + full/2;
+        if (geomKind==='floor') {
+          py = y*full + thin/2; // bottom anchored
+        } else if (geomKind==='ceiling') {
+          py = y*full + full - thin/2; // top anchored
+        } else if (geomKind==='wall_xMajor') {
+          // spans X, thin along Z -> anchor by z index to front/back boundary
+          if (z===0) pz = z*full + thin/2; else if (z===2) pz = z*full + full - thin/2;
+        } else if (geomKind==='wall_zMajor') {
+          // spans Z, thin along X -> anchor by x index to left/right boundary
+          if (x===0) px = x*full + thin/2; else if (x===2) px = x*full + full - thin/2;
+        } else if (geomKind==='wall_pillar') {
+          // remain centered
+        }
+        mesh.position.set(px, py, pz);
       }
       group.add(mesh);
     }
