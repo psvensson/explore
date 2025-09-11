@@ -141,7 +141,7 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     renderer.domElement.addEventListener('click', ()=>{ if (mode==='fps') lockPointer(); });
     document.addEventListener('pointerlockchange', ()=>{ if (mode==='fps' && !document.pointerLockElement){ /* lost lock -> drop to orbit? */ } });
   }
-  const instance = { scene, camera: activeCamera, orbitCamera, fpsCamera, renderer, controls, resize, enableFPS, enableOrbit, toggleCamera, get mode(){ return mode; } };
+  const instance = { scene, camera: activeCamera, orbitCamera, fpsCamera, renderer, controls, resize, enableFPS, enableOrbit, toggleCamera, get mode(){ return mode; }, THREE };
   // Helper APIs
   instance.resetView = function resetView() {
     orbitCamera.position.set(0, 40, 110);
@@ -236,7 +236,7 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
 // Update (replace) dungeon mesh in scene.
 export function updateDungeonMesh(mesh) {
   if (!lastInstance) return;
-  const { scene, fpsCamera } = lastInstance;
+  const { scene, fpsCamera, THREE: THREERef } = lastInstance;
   for (let i = scene.children.length - 1; i >= 0; i--) {
     const child = scene.children[i];
     if (!(child && child.userData && child.userData.keep)) scene.remove(child);
@@ -245,12 +245,12 @@ export function updateDungeonMesh(mesh) {
     // Compute bounding box to reposition FPS camera near dungeon
     if (scene && scene.add) scene.add(mesh);
     try {
-      if (THREE && THREE.Box3 && THREE.Vector3) {
-        const box = new THREE.Box3().setFromObject(mesh);
+      if (THREERef && THREERef.Box3 && THREERef.Vector3) {
+        const box = new THREERef.Box3().setFromObject(mesh);
         if (box.isEmpty && box.isEmpty()) { /* ignore */ } else {
-          const size = new THREE.Vector3();
+          const size = new THREERef.Vector3();
             box.getSize(size);
-            const center = new THREE.Vector3(); box.getCenter(center);
+            const center = new THREERef.Vector3(); box.getCenter(center);
             // Place fps camera just above center and offset back on Z
             fpsCamera.position.set(center.x + size.x * 0.1, center.y + Math.max(5, size.y * 0.3), center.z + size.z * 0.8 + 10);
         }
