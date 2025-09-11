@@ -180,8 +180,10 @@ export function initializeTileset() {
   return { emptyWithFloorProtoIdx, solidProtoIdx };
 }
 
-// Auto-initialize if running in browser so the tileset is ready.
-if (typeof window !== 'undefined') {
+// Auto-initialize only if running in browser AND NDWFC3D already present.
+// This preserves fail-fast during actual usage while allowing tests to
+// import the module, then define NDWFC3D, then call initializeTileset manually.
+if (typeof window !== 'undefined' && typeof NDWFC3D === 'function') {
   initializeTileset();
 }
 
@@ -192,3 +194,9 @@ export default {
   protoTileIds,
   tilePrototypes
 };
+
+// Test-only utility (not for production use). Allows Jest tests to clear state between cases.
+export function _resetTilesetForTests() {
+  tilePrototypes.length = 0;
+  protoTileIds.length = 0;
+}
