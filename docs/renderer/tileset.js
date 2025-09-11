@@ -94,9 +94,15 @@ export function initializeTileset() {
   // Empty with floor (tileId=1, no transforms)
   const emptyWithFloorProtoIdx = protoTileIds.length;
   addTileFromLayers([
-    ["111","111","111"],
-    ["000","000","000"],
-    ["000","000","000"]
+    [ "111",
+      "111",
+      "111"],
+    [ "000",
+      "000",
+      "000"],
+    [ "000",
+      "000",
+      "000"]
   ], 1, { transforms: [] });
 
   // Solid cube (tileId=1, no transforms)
@@ -109,72 +115,132 @@ export function initializeTileset() {
 
   // Straight corridor (Y rotations only)
   addTileFromLayers([
-    ["111","111","111"],
-    ["111","000","111"],
-    ["111","000","111"]
+    [ "111",
+      "111",
+      "111"],
+    [ "111",
+      "000",
+      "111"],
+    [ "111",
+      "000",
+      "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Corner (Y rotations only)
   addTileFromLayers([
-    ["111","111","111"],
-    ["111","100","100"],
-    ["111","100","100"]
+    [ "111",
+      "111",
+      "111"],
+    [ "111",
+      "100",
+      "100"],
+    [ "111",
+      "100",
+      "100"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Inverted corner (Y rotations only)
   addTileFromLayers([
-    ["111","111","111"],
-    ["111","100","000"],
-    ["100","000","000"]
+    [ "111",
+      "111",
+      "111"],
+    [ "111",
+      "100",
+      "000"],
+    [ "100",
+      "000",
+      "000"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Stair tile (Y rotations only, stair-up)
   addTileFromLayers([
-    ["111","111","111"], // z=0
-    ["000","020","111"], // z=1
-    ["000","000","000"]  // z=2
+    [ "111",
+      "111",
+      "111"], // z=0
+    [ "000",
+      "020",
+      "111"], // z=1
+    [ "000",
+      "000",
+      "000"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Stair tile mirrored (stair-up mirrored along X)
   addTileFromLayers([
-    ["111","111","111"], // z=0
-    ["111","020","000"], // z=1
-    ["000","000","000"]  // z=2
+    [ "111",
+      "111",
+      "111"], // z=0
+    [ "111",
+      "020",
+      "000"], // z=1
+    [ "000",
+      "000",
+      "000"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Stair-down variant
   addTileFromLayers([
-    ["000","000","000"], // z=0
-    ["000","020","111"], // z=1
-    ["111","111","111"]  // z=2
+    [ "000",
+      "000",
+      "000"], // z=0
+    [ "000",
+      "020",
+      "111"], // z=1
+    [ "111",
+      "111",
+      "111"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Stair-down mirrored
   addTileFromLayers([
-    ["000","000","000"], // z=0
-    ["111","020","000"], // z=1
-    ["111","111","111"]  // z=2
+    [ "000",
+      "000",
+      "000"], // z=0
+    [ "111",
+      "020",
+      "000"], // z=1
+    [ "111",
+      "111",
+      "111"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Dead-end corridor (Y rotations only)
   addTileFromLayers([
-    ["111","111","111"],
-    ["111","000","111"],
-    ["111","111","111"]
+    [ "111",
+      "111",
+      "111"],
+    [ "000",
+      "000",
+      "111"],
+    [ "000",
+      "000",
+      "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // T-junction (Y rotations only)
   addTileFromLayers([
-    ["111","111","111"],
-    ["111","000","111"],
-    ["111","100","111"]
+    [ "111",
+      "111",
+      "111"],
+    [ "111",
+      "000",
+      "101"],
+    [ "101",
+      "000",
+      "101"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Cross-junction (no transforms needed, symmetric)
   addTileFromLayers([
-    ["111","111","111"],
-    ["101","000","101"],
-    ["111","111","111"]
+    [ "111",
+      "111",
+      "111"],
+    [ "111",
+      "000",
+      "101"],
+    [ "111",
+      "111",
+      "111"]
   ], 0, { transforms: [] });
 
   return { emptyWithFloorProtoIdx, solidProtoIdx };
