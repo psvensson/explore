@@ -41,3 +41,4 @@ var WFC = function({nd,weights,rules,wave}){
   this.step=function(){ var min_ent=Infinity; var min_arg=undefined; for (var k in wavefront){ var ent=entropy(wavefront[k]); if (isNaN(ent)){ for (var k in wavefront){ wavefront[k]=new Array(n_patterns).fill(1);} for (var k in wave){ propagate(coord(k)); } console.log(":("); return false } if (ent==0){ continue; } ent += (Math.random()-0.5); if (ent < min_ent){ min_ent=ent; min_arg=coord(k);} } if (min_ent==Infinity){ wave=this.readout(); wavefront={}; return true; } wavefront[min_arg]=collapse(wavefront[min_arg]); propagate(min_arg); return false; };
 };
 if (typeof module === 'object'){ module.exports = WFC; }
+export default WFC;
