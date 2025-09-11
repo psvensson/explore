@@ -6,6 +6,7 @@ export function initUI(rootId = 'control-panel') {
   controlPanel.innerHTML = '';
   const log = [];
   function logAction(msg){ log.push(msg); }
+  // Classic generator button
   const generateDungeonButton = document.createElement('button');
   generateDungeonButton.innerText = 'Generate Dungeon';
   generateDungeonButton.addEventListener('click', () => {
@@ -13,6 +14,26 @@ export function initUI(rootId = 'control-panel') {
     if (window.generateDungeon) window.generateDungeon();
   });
   controlPanel.appendChild(generateDungeonButton);
+
+  // WFC size controls
+  const sizeWrap = document.createElement('div');
+  sizeWrap.style.marginTop='8px';
+  sizeWrap.innerHTML = '<label>Size X <input id="wfc-size-x" type="number" value="3" min="1" style="width:60px"/></label> ' +
+    '<label>Y <input id="wfc-size-y" type="number" value="3" min="1" style="width:60px"/></label> ' +
+    '<label>Z <input id="wfc-size-z" type="number" value="3" min="1" style="width:60px"/></label>';
+  controlPanel.appendChild(sizeWrap);
+
+  const generateWFCButton = document.createElement('button');
+  generateWFCButton.innerText = 'Generate WFC Dungeon';
+  generateWFCButton.style.marginTop='6px';
+  generateWFCButton.addEventListener('click', () => {
+    const sx = parseInt(document.getElementById('wfc-size-x').value,10);
+    const sy = parseInt(document.getElementById('wfc-size-y').value,10);
+    const sz = parseInt(document.getElementById('wfc-size-z').value,10);
+    logAction(`generate-wfc-${sx}x${sy}x${sz}`);
+    if (window.generateWFCDungeon) window.generateWFCDungeon({x:sx,y:sy,z:sz});
+  });
+  controlPanel.appendChild(generateWFCButton);
 
   return { log };
 }

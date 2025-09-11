@@ -89,6 +89,58 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   // expose globally for UI hooks
   if (typeof window !== 'undefined') {
     window.dungeonRenderer = instance;
+    // Provide WFC generation hook if dependencies available
+    window.generateWFCDungeon = async function({x=3,y=3,z=3}={}) {
+      try {
+        if (x<1||y<1||z<1) throw new Error('Invalid size');
+        // Sizes in tiles -> voxel dims
+        const vx = x*3, vy = y*3, vz = z*3;
+        const [{ initializeTileset, tilePrototypes } , WFCMod, meshUtil] = await Promise.all([
+          import('../dungeon/tileset.js'),
+          import('../dungeon/ndwfc.js'),
+          import('./wfc_tile_mesh.js')
+        ]);
+        if (!window.NDWFC3D) {
+          // minimal stub for tileset registration; tileset just calls NDWFC3D(proto)
+          window.NDWFC3D = function(){};
+        }
+        initializeTileset();
+        const n = tilePrototypes.length;
+        const weights = new Array(n).fill(1);
+        const rules = [];
+        for (let a=0;a<n;a++) for (let b=0;b<n;b++){ rules.push(['x',a,b]); rules.push(['y',a,b]); rules.push(['z',a,b]); }
+        const WFC = WFCMod.default || WFCMod.WFC || WFCMod;
+        const wf = new WFC({ nd:3, weights, rules });
+        wf.expand([0,0,0],[vy,vx,vz]); // note ordering per original WFC code (y,x,z)
+        let finished=false; for (let i=0;i<2000;i++){ if (wf.step()){ finished=true; break; } }
+        if (!finished) throw new Error('WFC did not finish');
+        const wave = wf.readout();
+        // Build full voxel grid (vz,vy,vx)
+        const grid = Array.from({length:vz},()=>Array.from({length:vy},()=>Array(vx).fill(0)));
+        for (const key in wave){
+          const [Y,X,Z] = key.split(',').map(Number); // ordering from WFC readout
+          const protoIndex = wave[key];
+          const vox = tilePrototypes[protoIndex].voxels;
+          for (let zz=0; zz<3; zz++) for (let yy=0; yy<3; yy++) for (let xx=0; xx<3; xx++){
+            const gz = Z*3 + zz;
+            const gy = Y*3 + yy;
+            const gx = X*3 + xx;
+            if (gz< vz && gy< vy && gx< vx) grid[gz][gy][gx] = vox[zz][yy][xx];
+          }
+        }
+        // Parse into tile placements
+        const tiles = meshUtil.parseVoxelGridToTiles(grid);
+        // Build group
+        const THREE = camera.constructor.prototype && camera.constructor.prototype.isCamera ? camera.constructor : window.THREE || (await import('three'));
+        const group = new THREE.Group();
+        tiles.forEach(t => {
+          const gm = meshUtil.buildTileMesh({THREE, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
+          gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); // x<-tileX,z<-tileZ,y<-tileY mapping
+          group.add(gm);
+        });
+        updateDungeonMesh(group);
+      } catch(e){ console.error('WFC generation failed', e); }
+    };
   }
 
   lastInstance = instance;
