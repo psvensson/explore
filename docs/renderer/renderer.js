@@ -90,16 +90,16 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   if (typeof window !== 'undefined') {
     window.dungeonRenderer = instance;
     // Provide WFC generation hook if dependencies available
-    window.generateWFCDungeon = async function({x=3,y=3,z=3}={}) {
+  window.generateWFCDungeon = async function({x=3,y=3,z=3}={}) {
       try {
         if (x<1||y<1||z<1) throw new Error('Invalid size');
         // Sizes in tiles -> voxel dims
         const vx = x*3, vy = y*3, vz = z*3;
-        const [{ initializeTileset, tilePrototypes } , WFCMod, meshUtil] = await Promise.all([
+        const [{ initializeTileset, tilePrototypes }, meshUtil] = await Promise.all([
           import('../dungeon/tileset.js'),
-          import('../dungeon/ndwfc.js'),
           import('./wfc_tile_mesh.js')
         ]);
+        const WFCMod = await import('../dungeon/ndwfc.js');
         if (!window.NDWFC3D) {
           // minimal stub for tileset registration; tileset just calls NDWFC3D(proto)
           window.NDWFC3D = function(){};
@@ -131,10 +131,10 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         // Parse into tile placements
         const tiles = meshUtil.parseVoxelGridToTiles(grid);
         // Build group
-        const THREE = camera.constructor.prototype && camera.constructor.prototype.isCamera ? camera.constructor : window.THREE || (await import('three'));
-        const group = new THREE.Group();
+  const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
+  const group = new THREERef.Group();
         tiles.forEach(t => {
-          const gm = meshUtil.buildTileMesh({THREE, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
+          const gm = meshUtil.buildTileMesh({THREE: THREERef, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
           gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); // x<-tileX,z<-tileZ,y<-tileY mapping
           group.add(gm);
         });
