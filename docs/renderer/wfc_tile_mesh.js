@@ -122,16 +122,23 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     const full = unit/3;
     switch(kind){
       case 'floor': {
-        // Thin slab for floor
-        g = new BG(full, full*0.25, full); break;
+        // Very thin slab (1/10 height)
+        g = new BG(full, full*0.1, full); break;
       }
       case 'ceiling': {
-        g = new BG(full, full*0.25, full); break;
+        g = new BG(full, full*0.1, full); break;
       }
-      case 'mid': {
-        // Thinner pillar-like wall voxel
-        g = new BG(full*0.6, full, full*0.6); break;
+      case 'wall_xMajor': { // wall stretches along X, thin along Z
+        g = new BG(full, full, full*0.1); break;
       }
+      case 'wall_zMajor': { // wall stretches along Z, thin along X
+        g = new BG(full*0.1, full, full); break;
+      }
+      case 'wall_pillar': { // ambiguous -> thin both directions
+        g = new BG(full*0.3, full, full*0.3); break;
+      }
+      case 'mid': { // fallback mid
+        g = new BG(full*0.6, full, full*0.6); break; }
       case 'stair': {
         // Keep near full size for readability
         g = new BG(full, full, full); break;
@@ -170,6 +177,19 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       if (v===2){ material = stairMat; geomKind='stair'; }
       else if (y===0){ material = floorMat; geomKind='floor'; }
       else if (y===2){ material = ceilingMat; geomKind='ceiling'; }
+      else if (y===1){
+        // Determine wall orientation by neighbor occupancy
+        const left   = x>0 && vox[z][y][x-1]>0;
+        const right  = x<2 && vox[z][y][x+1]>0;
+        const front  = z>0 && vox[z-1][y][x]>0; // negative z
+        const back   = z<2 && vox[z+1][y][x]>0; // positive z
+        const horizX = left || right;
+        const horizZ = front || back;
+        if (horizX && !horizZ) geomKind='wall_xMajor';
+        else if (horizZ && !horizX) geomKind='wall_zMajor';
+        else if (!horizX && !horizZ) geomKind='wall_pillar';
+        else geomKind='wall_pillar'; // junction / corner
+      }
       const geometry = getGeometry(geomKind);
       const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
       if (mesh.position){
@@ -177,9 +197,9 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         const baseX = x*unit/3 + unit/6;
         const baseY = y*unit/3 + unit/6;
         const baseZ = z*unit/3 + unit/6;
-        // Adjust Y for thin floor/ceiling so they sit at layer extremes
-        if (geomKind==='floor') mesh.position.set(baseX, y*unit/3 + (unit/3)*0.125, baseZ);
-        else if (geomKind==='ceiling') mesh.position.set(baseX, y*unit/3 + (unit/3) - (unit/3)*0.125, baseZ);
+        const full = unit/3;
+        if (geomKind==='floor') mesh.position.set(baseX, y*full + (full*0.05), baseZ); // half of 0.1 thickness
+        else if (geomKind==='ceiling') mesh.position.set(baseX, y*full + full - (full*0.05), baseZ);
         else mesh.position.set(baseX, baseY, baseZ);
       }
       group.add(mesh);
