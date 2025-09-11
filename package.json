@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+  "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+  "bump:build": "node scripts/bump-version.js",
+  "prepare": "husky install"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0"
+  "jest-environment-jsdom": "^29.7.0",
+  "husky": "^9.0.10"
   }
 }

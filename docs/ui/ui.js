@@ -36,6 +36,20 @@ export function initUI(rootId = 'control-panel') {
   });
   controlPanel.appendChild(generateWFCButton);
 
+  // Build/version label (auto-updated by pre-commit hook)
+  const versionEl = document.createElement('div');
+  versionEl.style.marginTop = '8px';
+  versionEl.style.fontSize = '12px';
+  versionEl.style.opacity = '0.8';
+  versionEl.textContent = 'Version: loading…';
+  controlPanel.appendChild(versionEl);
+  try {
+    fetch('version.json', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(v => { if (v && (v.build!=null || v.version)) versionEl.textContent = `Version: ${v.version||v.build}`; else versionEl.textContent='Version: n/a'; })
+      .catch(()=>{ versionEl.textContent='Version: n/a'; });
+  } catch(_) {}
+
   return { log };
 }
 
