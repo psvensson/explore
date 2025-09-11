@@ -102,17 +102,38 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   if (!THREE) throw new Error('THREE dependency missing');
   const proto = tilePrototypes[prototypeIndex];
   if (!proto) throw new Error('Invalid prototype index');
-  let vox = rotateY(proto.voxels, rotationY);
+  const vox = rotateY(proto.voxels, rotationY);
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
   const geometry = new (THREE.BoxGeometry||function(){}) (unit/3, unit/3, unit/3);
-  const materials = {
-    1: new (THREE.MeshStandardMaterial||function(){})({color:0x666666}),
-    2: new (THREE.MeshStandardMaterial||function(){})({color:0x777777})
-  };
+
+  // Material cache
+  const cache = THREE.__WFC_MATERIALS__ || (THREE.__WFC_MATERIALS__ = {});
+  function noiseTexture(color){
+    if (!THREE.CanvasTexture || !globalThis.document) return null;
+    const size=32; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
+    const r=(color>>16)&255,g=(color>>8)&255,b=color&255; const img=ctx.createImageData(size,size);
+    for (let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255; }
+    ctx.putImageData(img,0,0); const tex=new THREE.CanvasTexture(c); return tex;
+  }
+  function mat(key,color,label){
+    if (cache[key]) return cache[key];
+    const M = THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(cfg){this.color=cfg.color;};
+    const tex = noiseTexture(color);
+    const m = new M({ color, map:tex||undefined });
+    m.userData = { type: label };
+    cache[key]=m; return m;
+  }
+  const floorMat   = mat('floor',   0x333333,'floor');
+  const midMat     = mat('mid',     0x555555,'mid');
+  const ceilingMat = mat('ceiling', 0x888888,'ceiling');
+  const stairMat   = mat('stair',   0x777777,'stair');
+
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
     if (v>0){
-      const mesh = new (THREE.Mesh||function(){return {}})(geometry, materials[v]||materials[1]);
+      let material = midMat;
+      if (v===2) material = stairMat; else if (y===0) material = floorMat; else if (y===2) material = ceilingMat;
+      const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
       if (mesh.position) mesh.position.set(x*unit/3 + unit/6, y*unit/3 + unit/6, z*unit/3 + unit/6);
       group.add(mesh);
     }
