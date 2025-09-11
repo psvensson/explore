@@ -6,7 +6,7 @@ body {
 }
 
 header {
-    background-color: #4CAF50;
+    background-color: #183a5a; /* darker blue */
     color: white;
     padding: 10px 20px;
     text-align: center;
@@ -33,16 +33,17 @@ header {
 }
 
 button {
-    background-color: #4CAF50;
+    background-color: #1f4d78; /* primary button blue */
     color: white;
     border: none;
     padding: 10px 15px;
     border-radius: 5px;
     cursor: pointer;
+    transition: background-color 0.18s ease;
 }
 
 button:hover {
-    background-color: #45a049;
+    background-color: #163852; /* darker on hover */
 }
 
 .canvas-container {

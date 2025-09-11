@@ -18,9 +18,10 @@ export function initUI(rootId = 'control-panel') {
   // WFC size controls
   const sizeWrap = document.createElement('div');
   sizeWrap.style.marginTop='8px';
-  sizeWrap.innerHTML = '<label>Size X <input id="wfc-size-x" type="number" value="3" min="1" style="width:60px"/></label> ' +
-    '<label>Y <input id="wfc-size-y" type="number" value="3" min="1" style="width:60px"/></label> ' +
-    '<label>Z <input id="wfc-size-z" type="number" value="3" min="1" style="width:60px"/></label>';
+  // Renamed axes to semantic Width / Height / Length per user request
+  sizeWrap.innerHTML = '<label>Width <input id="wfc-size-x" type="number" value="3" min="1" style="width:60px"/></label> ' +
+    '<label>Height <input id="wfc-size-y" type="number" value="3" min="1" style="width:60px"/></label> ' +
+    '<label>Length <input id="wfc-size-z" type="number" value="3" min="1" style="width:60px"/></label>';
   controlPanel.appendChild(sizeWrap);
 
   const generateWFCButton = document.createElement('button');
