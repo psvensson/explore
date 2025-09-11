@@ -113,7 +113,33 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   if (!proto) throw new Error('Invalid prototype index');
   const vox = rotateY(proto.voxels, rotationY);
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
-  const geometry = new (THREE.BoxGeometry||function(){}) (unit/3, unit/3, unit/3);
+  // Geometry cache for different voxel roles to avoid recreating.
+  const geometryCache = {};
+  function getGeometry(kind){
+    if (geometryCache[kind]) return geometryCache[kind];
+    const BG = THREE.BoxGeometry||function(){};
+    let g;
+    const full = unit/3;
+    switch(kind){
+      case 'floor': {
+        // Thin slab for floor
+        g = new BG(full, full*0.25, full); break;
+      }
+      case 'ceiling': {
+        g = new BG(full, full*0.25, full); break;
+      }
+      case 'mid': {
+        // Thinner pillar-like wall voxel
+        g = new BG(full*0.6, full, full*0.6); break;
+      }
+      case 'stair': {
+        // Keep near full size for readability
+        g = new BG(full, full, full); break;
+      }
+      default: g = new BG(full, full, full);
+    }
+    geometryCache[kind]=g; return g;
+  }
 
   // Material cache (per THREE instance)
   const cache = getMaterialCache(THREE);
@@ -140,10 +166,22 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
     if (v>0){
-      let material = midMat;
-      if (v===2) material = stairMat; else if (y===0) material = floorMat; else if (y===2) material = ceilingMat;
+      let material = midMat; let geomKind='mid';
+      if (v===2){ material = stairMat; geomKind='stair'; }
+      else if (y===0){ material = floorMat; geomKind='floor'; }
+      else if (y===2){ material = ceilingMat; geomKind='ceiling'; }
+      const geometry = getGeometry(geomKind);
       const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
-      if (mesh.position) mesh.position.set(x*unit/3 + unit/6, y*unit/3 + unit/6, z*unit/3 + unit/6);
+      if (mesh.position){
+        // Base center position
+        const baseX = x*unit/3 + unit/6;
+        const baseY = y*unit/3 + unit/6;
+        const baseZ = z*unit/3 + unit/6;
+        // Adjust Y for thin floor/ceiling so they sit at layer extremes
+        if (geomKind==='floor') mesh.position.set(baseX, y*unit/3 + (unit/3)*0.125, baseZ);
+        else if (geomKind==='ceiling') mesh.position.set(baseX, y*unit/3 + (unit/3) - (unit/3)*0.125, baseZ);
+        else mesh.position.set(baseX, baseY, baseZ);
+      }
       group.add(mesh);
     }
   }
