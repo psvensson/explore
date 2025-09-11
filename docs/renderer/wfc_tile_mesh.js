@@ -121,6 +121,12 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     let g;
     const full = unit/3;
     switch(kind){
+      case 'floor_full': {
+        g = new BG(unit, full*0.1, unit); break;
+      }
+      case 'ceiling_full': {
+        g = new BG(unit, full*0.1, unit); break;
+      }
       case 'floor': {
         // Very thin slab (1/10 height)
         g = new BG(full, full*0.1, full); break;
@@ -170,15 +176,18 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
 
+  // Detect any floor / ceiling occupancy to create a single large plate each.
+  let hasFloor=false, hasCeiling=false;
+  for (let z=0; z<3; z++) for (let x=0; x<3; x++){ if (vox[z][0][x]>0) hasFloor=true; if (vox[z][2][x]>0) hasCeiling=true; }
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
     if (v>0){
       let material = midMat; let geomKind='mid';
       if (v===2){ material = stairMat; geomKind='stair'; }
-      else if (y===0){ material = floorMat; geomKind='floor'; }
-      else if (y===2){ material = ceilingMat; geomKind='ceiling'; }
+      else if (y===0){ if (!(x===0 && z===0)) { if (hasFloor) continue; } material = floorMat; geomKind= hasFloor ? 'floor_full':'floor'; }
+      else if (y===2){ if (!(x===0 && z===0)) { if (hasCeiling) continue; } material = ceilingMat; geomKind= hasCeiling ? 'ceiling_full':'ceiling'; }
       else if (y===1){
-        // Determine orientation heuristically within tile; anchor later by index to span to boundaries.
+        // Orientation hint for wall thickness axis
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
         const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
         if (hasX && !hasZ) geomKind='wall_xMajor';
@@ -195,16 +204,17 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         let px = x*full + full/2;
         let py = y*full + full/2;
         let pz = z*full + full/2;
-        if (geomKind==='floor') {
-          py = y*full + thin/2; // bottom anchored
-        } else if (geomKind==='ceiling') {
-          py = y*full + full - thin/2; // top anchored
+        if (geomKind==='floor' || geomKind==='floor_full') {
+          px = unit/2; pz = unit/2; py = y*full + thin/2; // full footprint
+        } else if (geomKind==='ceiling' || geomKind==='ceiling_full') {
+          px = unit/2; pz = unit/2; py = y*full + full - thin/2;
         } else if (geomKind==='wall_xMajor') {
-          // spans X, thin along Z -> anchor by z index to front/back boundary
-          if (z===0) pz = z*full + thin/2; else if (z===2) pz = z*full + full - thin/2;
+          // Anchor to front or back boundary depending on z index (z<=1 -> front else back)
+          pz = (z<=1) ? (0 + thin/2) : (unit - thin/2);
+          px = unit/2; // spans entire tile length in X visually when adjacent tiles placed
         } else if (geomKind==='wall_zMajor') {
-          // spans Z, thin along X -> anchor by x index to left/right boundary
-          if (x===0) px = x*full + thin/2; else if (x===2) px = x*full + full - thin/2;
+          px = (x<=1) ? (0 + thin/2) : (unit - thin/2);
+          pz = unit/2;
         } else if (geomKind==='wall_pillar') {
           // remain centered
         }
