@@ -35,6 +35,10 @@
             <div id="dungeon-container"></div>
         </section>
     </main>
+    <!-- NDWFC core scripts (moved to dungeon directory; load before tileset & renderer) -->
+    <script src="dungeon/ndwfc-tools.js"></script>
+    <script src="dungeon/ndwfc.js"></script>
+    <script type="module" src="dungeon/tileset.js"></script>
     <script type="module" src="renderer/renderer.js"></script>
     <script type="module" src="ui/ui.js"></script>
     <script type="module" src="dungeon/dungeon.js"></script>

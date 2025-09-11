@@ -7,7 +7,7 @@ describe('tileset', () => {
 
   beforeAll(async () => {
     global.NDWFC3D = function() {}; // stub before first import
-    const mod = await import('../docs/renderer/tileset.js');
+  const mod = await import('../docs/dungeon/tileset.js');
     ({ initializeTileset, createTileFormLayers, tilePrototypes, protoTileIds, _resetTilesetForTests } = mod);
   });
 

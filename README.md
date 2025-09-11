@@ -1,58 +1,51 @@
 # My Dungeon Web
-My Dungeon Web is a web-based application for exploring and interacting with procedurally generated dungeons in a 3D environment. The project uses vanilla HTML, CSS, ES6 JavaScript, and the three.js library for 3D rendering.
+Web-based experimental dungeon + wave function collapse (WFC) playground built with vanilla HTML, CSS, ES modules, and Three.js. Designed to deploy directly from the `docs/` folder (GitHub Pages compatible) without a build step.
 
-## Project Structure
-
-The project is organized as follows:
+## Current Structure
 
 ```
-my-dungeon-web/
-├── docs/                # Static site files (index.html, assets, styles, scripts)
-│   ├── index.html
-│   ├── css/
-│   ├── js/
-│   └── assets/
-├── src/                 # Source code for dungeon generation and rendering
-│   ├── generator/
-│   ├── renderer/
-│   └── ui/
-├── LICENSE
-├── README.md
-└── package.json         # (optional, if using npm for dependencies)
+docs/
+    index.html          # Entry point (includes import map + ordered script tags)
+    styles/             # CSS (main.css)
+    ui/                 # UI layer (ui.js)
+        renderer/           # Three.js renderer only
+        renderer.js
+        dungeon/            # Dungeon logic + NDWFC integration + tileset
+            dungeon.js
+            tileset.js        # 3D voxel tileset registering with NDWFC3D
+            ndwfc.js          # Third-party (LingDong-/ndwfc)
+            ndwfc-tools.js    # Third-party (LingDong-/ndwfc)
+            ndwfc-LICENSE     # License for the above
+tests/                # Jest tests (renderer, ui, dungeon)
+package.json          # Jest + ESM config
+jest.config.js
+README.md
 ```
 
-- **docs/**: Contains the static files for deployment (HTML, CSS, JS, assets).
-- **src/**: Contains modular source code for the dungeon generator, 3D renderer, and UI logic.
-- **LICENSE** and **README.md**: Project documentation and license information.
+## Key Components
+- Renderer (`docs/renderer/renderer.js`): Sets up Three.js scene with mandatory OrbitControls.
+- Tileset (`docs/dungeon/tileset.js`): Defines 3×3×3 voxel tiles and registers them with the NDWFC engine.
+- NDWFC (third-party): Loaded locally (`docs/dungeon/ndwfc.js`, `docs/dungeon/ndwfc-tools.js`) before tileset initialization.
+- UI (`docs/ui/ui.js`): Minimal controls (generate button) + DOM wiring.
+- Dungeon (`docs/dungeon/dungeon.js`): Placeholder grid-based generator.
 
-## Getting Started
+## Running
+Open `docs/index.html` directly in a modern browser (module + import map support required). No bundler or dev server is needed.
 
-Clone the repository and open `docs/index.html` in your web browser. The app is designed for GitHub Pages deployment.
+## Testing
+Run the Jest suite (ESM mode):
+```
+npm test
+```
 
-## Installation
+## Development Notes
+- Fail-fast philosophy: Scripts assume required globals / DOM elements exist; missing prerequisites should throw early.
+- Import map pins Three.js + OrbitControls for clean module specifiers.
+- `tileset.js` will throw if `NDWFC3D` (from `ndwfc.js`) isn't loaded first—`index.html` orders scripts accordingly.
 
-1. Clone the repository:
-    ```sh
-    git clone <repository-url>
-    ```
-
-2. Navigate to the project directory:
-    ```sh
-    cd my-dungeon-web
-    ```
-
-3. Open `docs/index.html` in your preferred browser.
-
-## Usage
-
-- Use UI controls to customize dungeon generation.
-- Explore the dungeon in 3D using zoom and pan.
-- Adjust parameters and view updates in real time.
-
-## Contributing
-
-Fork the repository and submit a pull request to contribute.
+## Third-Party Attribution
+This project includes code from:
+- LingDong Huang's ndwfc (https://github.com/LingDong-/ndwfc) — files: `docs/renderer/ndwfc.js`, `docs/renderer/ndwfc-tools.js` (MIT, see `docs/renderer/ndwfc-LICENSE`).
 
 ## License
-
-MIT License. See LICENSE for details.
+MIT (project code). See `docs/renderer/ndwfc-LICENSE` for third-party component licensing.
