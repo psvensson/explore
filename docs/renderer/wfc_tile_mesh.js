@@ -112,6 +112,27 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const proto = tilePrototypes[prototypeIndex];
   if (!proto) throw new Error('Invalid prototype index');
   const vox = rotateY(proto.voxels, rotationY);
+  // Fast path: solid tile made entirely of 1s -> render as a single full cube
+  let solidOnes = true;
+  outer: for (let z=0; z<3; z++) for (let y=0; y<3; y++) for (let x=0; x<3; x++){
+    if (vox[z][y][x] !== 1) { solidOnes = false; break outer; }
+  }
+  if (solidOnes){
+    const BG = THREE.BoxGeometry||function(){};
+    const geom = new BG(unit, unit, unit);
+    const M = THREE.Mesh||function(){ return { position:{ set(){} } } };
+    // reuse mid material for solid cube
+    const cache = getMaterialCache(THREE);
+    const midMat = (function(){
+      const Mtl = THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(cfg){this.color=cfg.color;};
+      if (!cache.mid){ cache.mid = new Mtl({color:0x555555}); cache.mid.userData={type:'mid'}; }
+      return cache.mid;
+    })();
+    const mesh = new M(geom, midMat);
+    if (mesh.position && mesh.position.set) mesh.position.set(unit/2, unit/2, unit/2);
+    const G = THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); };
+    const grp = new G(); grp.add(mesh); return grp;
+  }
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
   // Geometry cache for different voxel roles to avoid recreating.
   const geometryCache = {};
