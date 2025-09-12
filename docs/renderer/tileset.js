@@ -165,44 +165,7 @@ export function initializeTileset() {
       "000"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
-  // Stair tile mirrored (stair-up mirrored along X)
-  addTileFromLayers([
-    [ "111",
-      "111",
-      "111"], // z=0
-    [ "111",
-      "020",
-      "000"], // z=1
-    [ "000",
-      "000",
-      "000"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
-  // Stair-down variant
-  addTileFromLayers([
-    [ "000",
-      "000",
-      "000"], // z=0
-    [ "000",
-      "020",
-      "111"], // z=1
-    [ "111",
-      "111",
-      "111"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
-
-  // Stair-down mirrored
-  addTileFromLayers([
-    [ "000",
-      "000",
-      "000"], // z=0
-    [ "111",
-      "020",
-      "000"], // z=1
-    [ "111",
-      "111",
-      "111"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Dead-end corridor (Y rotations only)
   addTileFromLayers([
