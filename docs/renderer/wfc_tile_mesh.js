@@ -136,6 +136,50 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
   // Geometry cache for different voxel roles to avoid recreating.
   const geometryCache = {};
+  function createRampGeometry(axis){
+    const BG = THREE.BufferGeometry||function(){};
+    const geom = new BG();
+    const h = unit/2; // half dimensions for centered geometry
+    const verts = [];
+    if (axis === 'x'){
+      // Ramp rises along +X, extruded along Z
+      // Define triangle in YX (y vs x), extruded over Z full width
+      // Use symmetry by swapping x<->z from the 'z' case
+      // Build by computing 'z' case then swapping coordinates
+      // 'z' case vertices then map: (x,y,z) -> (z,y,x)
+      const v = [
+        [-h, 0, -h], [-h, 0, h], [-h, unit, h],
+        [ h, 0, -h], [ h, 0, h], [ h, unit, h]
+      ];
+      for (const p of v){ verts.push(p[2], p[1], p[0]); }
+    } else {
+      // axis 'z': ramp rises along +Z, extruded along X
+      const v = [
+        [-h, 0, -h], [-h, 0, h], [-h, unit, h],
+        [ h, 0, -h], [ h, 0, h], [ h, unit, h]
+      ];
+      for (const p of v){ verts.push(p[0], p[1], p[2]); }
+    }
+    const idx = [
+      // Left triangular cap (0,1,2)
+      0,1,2,
+      // Right triangular cap (3,5,4)
+      3,5,4,
+      // Bottom rectangle (0,3,4,1)
+      0,3,4, 0,4,1,
+      // Back rectangle at +axis (1,4,5,2)
+      1,4,5, 1,5,2,
+      // Sloped rectangle (0,3,5,2)
+      0,3,5, 0,5,2
+    ];
+    if (geom.setAttribute){
+      const pos = new THREE.Float32BufferAttribute(verts, 3);
+      geom.setAttribute('position', pos);
+      geom.setIndex(idx);
+      if (geom.computeVertexNormals) geom.computeVertexNormals();
+    }
+    return geom;
+  }
   function getGeometry(kind){
     if (geometryCache[kind]) return geometryCache[kind];
     const BG = THREE.BoxGeometry||function(){};
@@ -197,24 +241,39 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
 
+  // Pre-scan for stairs to emit a single ramp and skip mid-layer walls for this tile
+  let hasStair=false; let minSX=3, maxSX=-1, minSZ=3, maxSZ=-1;
+  for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
+    if (vox[z][y][x]===2){ hasStair=true; if (x<minSX) minSX=x; if (x>maxSX) maxSX=x; if (z<minSZ) minSZ=z; if (z>maxSZ) maxSZ=z; }
+  }
+  if (hasStair){
+    const extentX = maxSX - minSX; const extentZ = maxSZ - minSZ;
+    const axis = extentZ >= extentX ? 'z' : 'x';
+    const rampGeom = createRampGeometry(axis);
+    const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
+    if (rampMesh.position && rampMesh.position.set) rampMesh.position.set(unit/2, unit/2, unit/2);
+    group.add(rampMesh);
+  }
+
   // Detect any floor / ceiling occupancy to create a single large plate each.
   let hasFloor=false, hasCeiling=false;
   for (let z=0; z<3; z++) for (let x=0; x<3; x++){ if (vox[z][0][x]>0) hasFloor=true; if (vox[z][2][x]>0) hasCeiling=true; }
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
     if (v>0){
-      let material = midMat; let geomKind='mid';
-      if (v===2){ material = stairMat; geomKind='stair'; }
-      else if (y===0){ if (!(x===0 && z===0)) { if (hasFloor) continue; } material = floorMat; geomKind= hasFloor ? 'floor_full':'floor'; }
+      if (hasStair && y===1) continue; // skip mid layer details; ramp represents it
+      let material = (v===2 ? stairMat : midMat);
+      let geomKind='mid';
+      if (y===0){ if (!(x===0 && z===0)) { if (hasFloor) continue; } material = floorMat; geomKind= hasFloor ? 'floor_full':'floor'; }
       else if (y===2){ if (!(x===0 && z===0)) { if (hasCeiling) continue; } material = ceilingMat; geomKind= hasCeiling ? 'ceiling_full':'ceiling'; }
       else if (y===1){
-        // Orientation hint for wall thickness axis
+        // Treat mid layer (including 'stair' voxels) as wall plates per orientation
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
         const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
         if (hasX && !hasZ) geomKind='wall_xMajor';
         else if (hasZ && !hasX) geomKind='wall_zMajor';
         else if (hasX && hasZ) geomKind='wall_both';
-        else geomKind='wall_both'; // isolated mid voxel should still form boundary plates
+        else geomKind='wall_both';
       }
       // Decide per-axis emission to avoid duplicates and ensure boundary coverage
       let emitX = false, emitZ = false;
