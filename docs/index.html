@@ -18,6 +18,7 @@
     <header>
         <h1>My Dungeon Web</h1>
         <p>Explore and generate dungeons in a 3D environment.</p>
+        <div id="header-version" style="position:absolute;top:10px;right:10px;background:#0f2740;color:#cfe6ff;padding:6px 10px;border-radius:6px;font-size:13px;font-weight:600;letter-spacing:0.3px">Version: loading…</div>
     </header>
     <main>
         <section id="ui-controls">
@@ -39,7 +40,22 @@
     <!-- Tileset module (NDWFC prototypes). NDWFC core dynamically imported on demand. -->
     <script type="module" src="dungeon/tileset.js"></script>
     <script type="module" src="renderer/renderer.js"></script>
-    <script type="module" src="ui/ui.js"></script>
+        <script type="module" src="ui/ui.js"></script>
+        <script type="module">
+            // Mirror version into header badge
+            fetch('version.json', { cache: 'no-store' })
+                .then(r => r.ok ? r.json() : null)
+                .then(v => {
+                    const el = document.getElementById('header-version');
+                    if (!el) return;
+                    if (v && (v.build!=null || v.version)) el.textContent = `Version: ${v.version||v.build}`;
+                    else el.textContent = 'Version: n/a';
+                })
+                .catch(() => {
+                    const el = document.getElementById('header-version');
+                    if (el) el.textContent = 'Version: n/a';
+                });
+        </script>
     <script type="module" src="dungeon/dungeon.js"></script>
 </body>
 </html>

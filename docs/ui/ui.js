@@ -38,9 +38,15 @@ export function initUI(rootId = 'control-panel') {
 
   // Build/version label (auto-updated by pre-commit hook)
   const versionEl = document.createElement('div');
-  versionEl.style.marginTop = '8px';
-  versionEl.style.fontSize = '12px';
-  versionEl.style.opacity = '0.8';
+  versionEl.style.marginTop = '10px';
+  versionEl.style.fontSize = '14px';
+  versionEl.style.fontWeight = '600';
+  versionEl.style.background = '#0f2740';
+  versionEl.style.color = '#cfe6ff';
+  versionEl.style.padding = '6px 10px';
+  versionEl.style.borderRadius = '6px';
+  versionEl.style.display = 'inline-block';
+  versionEl.style.letterSpacing = '0.3px';
   versionEl.textContent = 'Version: loading…';
   controlPanel.appendChild(versionEl);
   try {
