@@ -222,6 +222,43 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     }
     return geom;
   }
+  function createHalfTileHeightRampGeometry(axis, dir){
+    const BG = THREE.BufferGeometry||function(){};
+    const geom = new BG();
+    const full = unit/3; // footprint size for a voxel
+    const fv = full/2;
+    const height = unit/2; // half tile height
+    const verts = [];
+    if (axis==='x'){
+      const v = [
+        [-fv, 0, -fv], [-fv, 0, fv], [-fv, height, fv],
+        [ fv, 0, -fv], [ fv, 0, fv], [ fv, height, fv]
+      ];
+      for (const p of v){
+        let x = p[2], y = p[1], z = p[0];
+        if (dir && dir < 0) x = -x;
+        verts.push(x,y,z);
+      }
+    } else {
+      const v = [
+        [-fv, 0, -fv], [-fv, 0, fv], [-fv, height, fv],
+        [ fv, 0, -fv], [ fv, 0, fv], [ fv, height, fv]
+      ];
+      for (const p of v){
+        let x = p[0], y = p[1], z = p[2];
+        if (dir && dir < 0) z = -z;
+        verts.push(x,y,z);
+      }
+    }
+    const idx = [0,1,2, 3,5,4, 0,3,4, 0,4,1, 1,4,5, 1,5,2, 0,3,5, 0,5,2];
+    if (geom.setAttribute){
+      const pos = new THREE.Float32BufferAttribute(verts,3);
+      geom.setAttribute('position', pos);
+      geom.setIndex(idx);
+      if (geom.computeVertexNormals) geom.computeVertexNormals();
+    }
+    return geom;
+  }
   function getGeometry(kind){
     if (geometryCache[kind]) return geometryCache[kind];
     const BG = THREE.BoxGeometry||function(){};
@@ -283,7 +320,7 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
 
-  // Build voxel-sized ramps for each stair voxel
+  // Build a central ramp (snug to floor, rising to half tile height) and a back-row platform
   const stairVoxels = [];
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     if (vox[z][y][x]===2) stairVoxels.push({x,y,z});
@@ -306,16 +343,37 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     return {axis, dir};
   }
   if (stairVoxels.length){
-    for (const {x, y, z} of stairVoxels){
-      const {axis, dir} = inferAxisDirForVoxel(x,y,z);
-      const geom = createVoxelRampGeometry(axis, dir);
-      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, stairMat);
+    // Prefer the central stair voxel; fallback to the first one
+    let center = stairVoxels.find(v => v.x===1 && v.y===1 && v.z===1) || stairVoxels[0];
+    const {axis, dir} = inferAxisDirForVoxel(center.x, center.y, center.z);
+    // Central ramp: voxel footprint, half-tile height, anchored to floor
+    const rampGeom = createHalfTileHeightRampGeometry(axis, dir);
+    const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
+    if (rampMesh.position && rampMesh.position.set){
+      const full = unit/3;
+      const px = 1*full + full/2; // central voxel
+      const py = (unit/2)/2;      // half height -> center at unit/4
+      const pz = 1*full + full/2;
+      rampMesh.position.set(px, py, pz);
+    }
+    group.add(rampMesh);
+
+    // Back-row platform: full width, half height, 1/3 length at the "back" side of the ramp
+    const backGeom = (THREE.BoxGeometry||function(){});
+    if (axis==='z'){
+      const geom = new backGeom(unit, unit/2, unit/3);
+      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
       if (mesh.position && mesh.position.set){
-        const full = unit/3;
-        const px = x*full + full/2;
-        const py = y*full + full/2;
-        const pz = z*full + full/2;
-        mesh.position.set(px, py, pz);
+        const pz = (dir>0) ? (unit - unit/6) : (unit/6);
+        mesh.position.set(unit/2, unit/4, pz);
+      }
+      group.add(mesh);
+    } else { // axis x
+      const geom = new backGeom(unit/3, unit/2, unit);
+      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
+      if (mesh.position && mesh.position.set){
+        const px = (dir>0) ? (unit - unit/6) : (unit/6);
+        mesh.position.set(px, unit/4, unit/2);
       }
       group.add(mesh);
     }
