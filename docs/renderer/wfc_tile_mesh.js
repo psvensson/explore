@@ -193,22 +193,24 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         if (hasX && !hasZ) geomKind='wall_xMajor';
         else if (hasZ && !hasX) geomKind='wall_zMajor';
         else if (hasX && hasZ) geomKind='wall_both';
-        else geomKind='wall_pillar';
+        else geomKind='wall_both'; // isolated mid voxel should still form boundary plates
       }
-      // For long walls, emit a single mesh per boundary (avoid duplicates from multiple sub-voxels)
+      // Decide per-axis emission to avoid duplicates and ensure boundary coverage
+      let emitX = false, emitZ = false;
       if (geomKind==='wall_xMajor' || geomKind==='wall_both'){
         const front = (z<=1);
-        if (!((front && z===0) || (!front && z===2))) continue; // only once per boundary
-        if (x!==1) continue; // pick center column representative
-      } else if (geomKind==='wall_zMajor' || geomKind==='wall_both'){
+        emitX = ((front && z===0) || (!front && z===2)) && (x===1);
+      }
+      if (geomKind==='wall_zMajor' || geomKind==='wall_both'){
         const left = (x<=1);
-        if (!((left && x===0) || (!left && x===2))) continue; // only once per boundary
-        if (z!==1) continue; // pick center row representative
+        emitZ = ((left && x===0) || (!left && x===2)) && (z===1);
       }
 
-      const geometry = getGeometry(geomKind==='wall_both' ? 'wall_xMajor' : geomKind);
-      const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
-      if (mesh.position){
+      // Handle non-wall kinds normally
+      if (!(geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both' || geomKind==='wall_pillar')){
+        const geometry = getGeometry(geomKind);
+        const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
+        if (mesh.position){
         const full = unit/3;
         const thin = full*0.1;
   // Default centered; for walls we use full tile height so center at tile center in Y
@@ -219,32 +221,36 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
           px = unit/2; pz = unit/2; py = y*full + thin/2; // full footprint
         } else if (geomKind==='ceiling' || geomKind==='ceiling_full') {
           px = unit/2; pz = unit/2; py = y*full + full - thin/2;
-  } else if (geomKind==='wall_xMajor') {
-          // Anchor to front or back boundary depending on z index (z<=1 -> front else back)
-          pz = (z<=1) ? (0 + thin/2) : (unit - thin/2);
-          px = unit/2; // spans entire tile length in X visually when adjacent tiles placed
-        } else if (geomKind==='wall_zMajor') {
-          px = (x<=1) ? (0 + thin/2) : (unit - thin/2);
-          pz = unit/2;
         } else if (geomKind==='wall_pillar') {
           // remain centered
         }
         mesh.position.set(px, py, pz);
-      }
-      group.add(mesh);
-      // If both directions, emit the second mesh along Z with same rules
-      if (geomKind==='wall_both'){
-        const geometry2 = getGeometry('wall_zMajor');
-        const mesh2 = new (THREE.Mesh||function(){return {}})(geometry2, material);
-        if (mesh2.position){
-          const full = unit/3;
-          const thin = full*0.1;
-          let px2 = (x<=1) ? (0 + thin/2) : (unit - thin/2);
-          let py2 = unit/2;
-          let pz2 = unit/2;
-          mesh2.position.set(px2, py2, pz2);
         }
-        group.add(mesh2);
+        group.add(mesh);
+        continue;
+      }
+
+      // Walls: emit along X boundary
+      if (emitX){
+        const geometryX = getGeometry('wall_xMajor');
+        const meshX = new (THREE.Mesh||function(){return {}})(geometryX, material);
+        if (meshX.position){
+          const full = unit/3; const thin = full*0.1;
+          const pz = (z<=1) ? (0 + thin/2) : (unit - thin/2);
+          meshX.position.set(unit/2, unit/2, pz);
+        }
+        group.add(meshX);
+      }
+      // Walls: emit along Z boundary
+      if (emitZ){
+        const geometryZ = getGeometry('wall_zMajor');
+        const meshZ = new (THREE.Mesh||function(){return {}})(geometryZ, material);
+        if (meshZ.position){
+          const full = unit/3; const thin = full*0.1;
+          const pxb = (x<=1) ? (0 + thin/2) : (unit - thin/2);
+          meshZ.position.set(pxb, unit/2, unit/2);
+        }
+        group.add(meshZ);
       }
     }
   }
