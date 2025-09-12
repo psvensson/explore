@@ -351,8 +351,9 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
     if (rampMesh.position && rampMesh.position.set){
       const full = unit/3;
+      const thin = full*0.1;
       const px = 1*full + full/2; // central voxel
-      const py = (unit/2)/2;      // half height -> center at unit/4
+      const py = thin;            // base sits snug on floor top
       const pz = 1*full + full/2;
       rampMesh.position.set(px, py, pz);
     }
@@ -364,16 +365,20 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
       const geom = new backGeom(unit, unit/2, unit/3);
       const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
       if (mesh.position && mesh.position.set){
+        const full = unit/3; const thin = full*0.1;
         const pz = (dir>0) ? (unit - unit/6) : (unit/6);
-        mesh.position.set(unit/2, unit/4, pz);
+        const py = thin + (unit/2)/2; // centered half-height box resting on floor top
+        mesh.position.set(unit/2, py, pz);
       }
       group.add(mesh);
     } else { // axis x
       const geom = new backGeom(unit/3, unit/2, unit);
       const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
       if (mesh.position && mesh.position.set){
+        const full = unit/3; const thin = full*0.1;
         const px = (dir>0) ? (unit - unit/6) : (unit/6);
-        mesh.position.set(px, unit/4, unit/2);
+        const py = thin + (unit/2)/2; // centered half-height box resting on floor top
+        mesh.position.set(px, py, unit/2);
       }
       group.add(mesh);
     }
