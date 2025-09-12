@@ -136,29 +136,35 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
   // Geometry cache for different voxel roles to avoid recreating.
   const geometryCache = {};
-  function createRampGeometry(axis){
+  function createRampGeometry(axis, dir){
     const BG = THREE.BufferGeometry||function(){};
     const geom = new BG();
     const h = unit/2; // half dimensions for centered geometry
     const verts = [];
+    // Build a ramp that occupies exactly half the cube volume (triangular prism).
+    // Base dimensions: unit x unit footprint, height: unit. Slope along +axis when dir>0, else along -axis.
     if (axis === 'x'){
-      // Ramp rises along +X, extruded along Z
-      // Define triangle in YX (y vs x), extruded over Z full width
-      // Use symmetry by swapping x<->z from the 'z' case
-      // Build by computing 'z' case then swapping coordinates
-      // 'z' case vertices then map: (x,y,z) -> (z,y,x)
+      // Start from the +Z ramp (slope along +Z) and swap x<->z
       const v = [
         [-h, 0, -h], [-h, 0, h], [-h, unit, h],
         [ h, 0, -h], [ h, 0, h], [ h, unit, h]
       ];
-      for (const p of v){ verts.push(p[2], p[1], p[0]); }
+      for (const p of v){
+        let x = p[2], y = p[1], z = p[0];
+        if (dir && dir < 0) x = -x; // flip to slope along -X
+        verts.push(x, y, z);
+      }
     } else {
       // axis 'z': ramp rises along +Z, extruded along X
       const v = [
         [-h, 0, -h], [-h, 0, h], [-h, unit, h],
         [ h, 0, -h], [ h, 0, h], [ h, unit, h]
       ];
-      for (const p of v){ verts.push(p[0], p[1], p[2]); }
+      for (const p of v){
+        let x = p[0], y = p[1], z = p[2];
+        if (dir && dir < 0) z = -z; // flip to slope along -Z
+        verts.push(x, y, z);
+      }
     }
     const idx = [
       // Left triangular cap (0,1,2)
@@ -249,7 +255,22 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   if (hasStair){
     const extentX = maxSX - minSX; const extentZ = maxSZ - minSZ;
     const axis = extentZ >= extentX ? 'z' : 'x';
-    const rampGeom = createRampGeometry(axis);
+    // Infer direction: compare occupancy at negative vs positive side along the chosen axis
+    function sideOccupancy(ax, side){
+      let c = 0;
+      if (ax==='z'){
+        const s = side<0 ? 0 : 2;
+        for (let y=0;y<3;y++) for (let x=0;x<3;x++) if (vox[s][y][x]>0) c++;
+      } else { // 'x'
+        const s = side<0 ? 0 : 2;
+        for (let z=0;z<3;z++) for (let y=0;y<3;y++) if (vox[z][y][s]>0) c++;
+      }
+      return c;
+    }
+    const occNeg = sideOccupancy(axis, -1);
+    const occPos = sideOccupancy(axis, +1);
+    const dir = occPos >= occNeg ? +1 : -1;
+    const rampGeom = createRampGeometry(axis, dir);
     const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
     if (rampMesh.position && rampMesh.position.set) rampMesh.position.set(unit/2, unit/2, unit/2);
     group.add(rampMesh);
