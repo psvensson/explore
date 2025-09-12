@@ -320,6 +320,20 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
 
+  function classifyStairVariant(vox3){
+    // vox3[z][y][x], we inspect middle layer y=1 edges for platform (111)
+    const y = 1;
+    const rowStr = (z) => vox3[z][y].map(n => n>0? '1':'0').join('');
+    const colStr = (x) => [vox3[0][y][x], vox3[1][y][x], vox3[2][y][x]].map(n=> n>0? '1':'0').join('');
+    const front = rowStr(0), back = rowStr(2);
+    const left = colStr(0), right = colStr(2);
+    if (back === '111')  return { kind:'lower', axis:'z', dir:+1 };
+    if (front === '111') return { kind:'upper', axis:'z', dir:-1 };
+    if (right === '111') return { kind:'lower', axis:'x', dir:+1 };
+    if (left === '111')  return { kind:'upper', axis:'x', dir:-1 };
+    return null;
+  }
+
   // Build a central ramp (snug to floor, rising to half tile height) and a back-row platform
   const stairVoxels = [];
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
@@ -345,7 +359,8 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   if (stairVoxels.length){
     // Prefer the central stair voxel; fallback to the first one
     let center = stairVoxels.find(v => v.x===1 && v.y===1 && v.z===1) || stairVoxels[0];
-    const {axis, dir} = inferAxisDirForVoxel(center.x, center.y, center.z);
+    const classified = classifyStairVariant(vox) || inferAxisDirForVoxel(center.x, center.y, center.z);
+    const axis = classified.axis, dir = classified.dir;
     // Central ramp: voxel footprint, half-tile height, anchored to floor
     const rampGeom = createHalfTileHeightRampGeometry(axis, dir);
     const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
