@@ -175,6 +175,25 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   if (typeof window !== 'undefined') {
   window.dungeonRenderer = instance;
     // Provide WFC generation hook if dependencies available
+  function gridToAscii(grid){
+      // grid[z][y][x] with values: 0 empty, 1 rock, 2 stair
+      if (!Array.isArray(grid) || grid.length===0) return '';
+      const Z=grid.length, Y=grid[0].length, X=grid[0][0].length;
+      const lines=[];
+      for (let y=0;y<Y;y++){
+        lines.push(`-- Layer y=${y} --`);
+        for (let z=0; z<Z; z++){
+          let row='';
+          for (let x=0; x<X; x++){
+            const v = grid[z][y][x];
+            row += v===0 ? '.' : (v===1 ? '#' : '^');
+          }
+          lines.push(row);
+        }
+        lines.push('');
+      }
+      return lines.join('\n');
+    }
   window.generateWFCDungeon = async function({x=3,y=3,z=3}={}) {
       try {
         if (x<1||y<1||z<1) throw new Error('Invalid size');
@@ -200,8 +219,8 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         let finished=false; for (let i=0;i<2000;i++){ if (wf.step()){ finished=true; break; } }
         if (!finished) throw new Error('WFC did not finish');
         const wave = wf.readout();
-        // Build full voxel grid (vz,vy,vx)
-        const grid = Array.from({length:vz},()=>Array.from({length:vy},()=>Array(vx).fill(0)));
+  // Build full voxel grid (vz,vy,vx)
+  const grid = Array.from({length:vz},()=>Array.from({length:vy},()=>Array(vx).fill(0)));
         for (const key in wave){
           const [Y,X,Z] = key.split(',').map(Number); // ordering from WFC readout
           const protoIndex = wave[key];
@@ -213,6 +232,12 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
             if (gz< vz && gy< vy && gx< vx) grid[gz][gy][gx] = vox[zz][yy][xx];
           }
         }
+        // Also render ASCII of layers
+        try {
+          const ascii = gridToAscii(grid);
+          const pre = document.getElementById('ascii-map');
+          if (pre) pre.textContent = ascii;
+        } catch(_) {}
         // Parse into tile placements
         const tiles = meshUtil.parseVoxelGridToTiles(grid);
         // Build group
