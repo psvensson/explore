@@ -186,6 +186,42 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     }
     return geom;
   }
+  function createVoxelRampGeometry(axis, dir){
+    const BG = THREE.BufferGeometry||function(){};
+    const geom = new BG();
+    const full = unit/3;
+    const hv = full/2; // half voxel size
+    const verts = [];
+    if (axis==='x'){
+      const v = [
+        [-hv, 0, -hv], [-hv, 0, hv], [-hv, full, hv],
+        [ hv, 0, -hv], [ hv, 0, hv], [ hv, full, hv]
+      ];
+      for (const p of v){
+        let x = p[2], y = p[1], z = p[0];
+        if (dir && dir < 0) x = -x;
+        verts.push(x,y,z);
+      }
+    } else {
+      const v = [
+        [-hv, 0, -hv], [-hv, 0, hv], [-hv, full, hv],
+        [ hv, 0, -hv], [ hv, 0, hv], [ hv, full, hv]
+      ];
+      for (const p of v){
+        let x = p[0], y = p[1], z = p[2];
+        if (dir && dir < 0) z = -z;
+        verts.push(x,y,z);
+      }
+    }
+    const idx = [0,1,2, 3,5,4, 0,3,4, 0,4,1, 1,4,5, 1,5,2, 0,3,5, 0,5,2];
+    if (geom.setAttribute){
+      const pos = new THREE.Float32BufferAttribute(verts,3);
+      geom.setAttribute('position', pos);
+      geom.setIndex(idx);
+      if (geom.computeVertexNormals) geom.computeVertexNormals();
+    }
+    return geom;
+  }
   function getGeometry(kind){
     if (geometryCache[kind]) return geometryCache[kind];
     const BG = THREE.BoxGeometry||function(){};
@@ -247,33 +283,42 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
 
-  // Pre-scan for stairs to emit a single ramp and skip mid-layer walls for this tile
-  let hasStair=false; let minSX=3, maxSX=-1, minSZ=3, maxSZ=-1;
+  // Build voxel-sized ramps for each stair voxel
+  const stairVoxels = [];
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
-    if (vox[z][y][x]===2){ hasStair=true; if (x<minSX) minSX=x; if (x>maxSX) maxSX=x; if (z<minSZ) minSZ=z; if (z>maxSZ) maxSZ=z; }
+    if (vox[z][y][x]===2) stairVoxels.push({x,y,z});
   }
-  if (hasStair){
-    const extentX = maxSX - minSX; const extentZ = maxSZ - minSZ;
-    const axis = extentZ >= extentX ? 'z' : 'x';
-    // Infer direction: compare occupancy at negative vs positive side along the chosen axis
-    function sideOccupancy(ax, side){
-      let c = 0;
-      if (ax==='z'){
-        const s = side<0 ? 0 : 2;
-        for (let y=0;y<3;y++) for (let x=0;x<3;x++) if (vox[s][y][x]>0) c++;
-      } else { // 'x'
-        const s = side<0 ? 0 : 2;
-        for (let z=0;z<3;z++) for (let y=0;y<3;y++) if (vox[z][y][s]>0) c++;
-      }
-      return c;
+  function inferAxisDirForVoxel(vx, vy, vz){
+    // Decide axis by checking adjacent solid (1) distribution in mid layer around the stair voxel
+    let countXNeg=0, countXPos=0, countZNeg=0, countZPos=0;
+    for (let y=0;y<3;y++){
+      if (vx>0 && vox[vz][y][vx-1]>0) countXNeg++;
+      if (vx<2 && vox[vz][y][vx+1]>0) countXPos++;
+      if (vz>0 && vox[vz-1][y][vx]>0) countZNeg++;
+      if (vz<2 && vox[vz+1][y][vx]>0) countZPos++;
     }
-    const occNeg = sideOccupancy(axis, -1);
-    const occPos = sideOccupancy(axis, +1);
-    const dir = occPos >= occNeg ? +1 : -1;
-    const rampGeom = createRampGeometry(axis, dir);
-    const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
-    if (rampMesh.position && rampMesh.position.set) rampMesh.position.set(unit/2, unit/2, unit/2);
-    group.add(rampMesh);
+    const xSpan = countXNeg + countXPos;
+    const zSpan = countZNeg + countZPos;
+    let axis = (zSpan >= xSpan) ? 'z' : 'x';
+    let dir;
+    if (axis==='z') dir = (countZPos >= countZNeg) ? +1 : -1;
+    else dir = (countXPos >= countXNeg) ? +1 : -1;
+    return {axis, dir};
+  }
+  if (stairVoxels.length){
+    for (const {x, y, z} of stairVoxels){
+      const {axis, dir} = inferAxisDirForVoxel(x,y,z);
+      const geom = createVoxelRampGeometry(axis, dir);
+      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, stairMat);
+      if (mesh.position && mesh.position.set){
+        const full = unit/3;
+        const px = x*full + full/2;
+        const py = y*full + full/2;
+        const pz = z*full + full/2;
+        mesh.position.set(px, py, pz);
+      }
+      group.add(mesh);
+    }
   }
 
   // Detect any floor / ceiling occupancy to create a single large plate each.
@@ -281,8 +326,8 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   for (let z=0; z<3; z++) for (let x=0; x<3; x++){ if (vox[z][0][x]>0) hasFloor=true; if (vox[z][2][x]>0) hasCeiling=true; }
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
-    if (v>0){
-      if (hasStair && y===1) continue; // skip mid layer details; ramp represents it
+  if (v>0){
+  // Do not skip mid layer when stairs present; we now combine walls with voxel ramps
       let material = (v===2 ? stairMat : midMat);
       let geomKind='mid';
       if (y===0){ if (!(x===0 && z===0)) { if (hasFloor) continue; } material = floorMat; geomKind= hasFloor ? 'floor_full':'floor'; }
