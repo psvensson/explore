@@ -100,9 +100,9 @@ export function initializeTileset() {
     [ "000",
       "000",
       "000"],
-    [ "000",
-      "000",
-      "000"]
+    [ "111",
+      "111",
+      "111"]
   ], 1, { transforms: [] });
 
   // Solid cube (tileId=1, no transforms)
@@ -122,7 +122,7 @@ export function initializeTileset() {
       "000",
       "111"],
     [ "111",
-      "000",
+      "111",
       "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
@@ -135,8 +135,8 @@ export function initializeTileset() {
       "100",
       "100"],
     [ "111",
-      "100",
-      "100"]
+      "111",
+      "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Inverted corner (Y rotations only)
@@ -147,12 +147,13 @@ export function initializeTileset() {
     [ "111",
       "100",
       "000"],
-    [ "100",
-      "000",
-      "000"]
+    [ "111",
+      "111",
+      "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
-  // Stair tile (Y rotations only, stair-up)
+  // ---------------- need to think about those two - also to include ceiling in alltiles instead of double open layers
+  // Lower Stair tile (Y rotations only, stair-up)
   addTileFromLayers([
     [ "111",
       "111",
@@ -162,9 +163,21 @@ export function initializeTileset() {
       "111"], // z=1
     [ "000",
       "000",
-      "000"]  // z=2
+      "020"]  // z=2
   ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
+   // Upper Stair tile (Y rotations only, stair-down)
+  addTileFromLayers([
+    [ "020",
+      "111",
+      "111"], // z=0
+    [ "000",
+      "000",
+      "000"], // z=1
+    [ "111",
+      "111",
+      "111"]  // z=2
+  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
 
   // Dead-end corridor (Y rotations only)
@@ -175,8 +188,8 @@ export function initializeTileset() {
     [ "000",
       "000",
       "111"],
-    [ "000",
-      "000",
+    [ "111",
+      "111",
       "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
@@ -189,8 +202,8 @@ export function initializeTileset() {
       "000",
       "101"],
     [ "111",
-      "000",
-      "101"]
+      "111",
+      "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
   // Cross-junction (no transforms needed, symmetric)
@@ -201,9 +214,9 @@ export function initializeTileset() {
     [ "101",
       "000",
       "101"],
-    [ "101",
-      "000",
-      "101"]
+    [ "111",
+      "111",
+      "111"]
   ], 0, { transforms: [] });
 
   return { emptyWithFloorProtoIdx, solidProtoIdx };
