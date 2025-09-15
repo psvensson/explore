@@ -301,11 +301,15 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   // Material cache (per THREE instance)
   const cache = getMaterialCache(THREE);
   function noiseTexture(color){
-    if (!THREE.CanvasTexture || !globalThis.document) return null;
-    const size=32; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
-    const r=(color>>16)&255,g=(color>>8)&255,b=color&255; const img=ctx.createImageData(size,size);
-    for (let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255; }
-    ctx.putImageData(img,0,0); const tex=new THREE.CanvasTexture(c); return tex;
+    // In test (jsdom) environment Canvas 2D may be unimplemented; fail soft returning null
+    try {
+      if (!THREE.CanvasTexture || !globalThis.document) return null;
+      const size=32; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext && c.getContext('2d');
+      if (!ctx || !ctx.createImageData) return null;
+      const r=(color>>16)&255,g=(color>>8)&255,b=color&255; const img=ctx.createImageData(size,size);
+      for (let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255; }
+      ctx.putImageData(img,0,0); const tex=new THREE.CanvasTexture(c); return tex;
+    } catch(e){ return null; }
   }
   function mat(key,color,label){
     if (cache[key]) return cache[key];
@@ -319,6 +323,8 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const midMat     = mat('mid',     0x555555,'mid');
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
+  // Slightly brighter/emissive-like color cue for portal stairs (cached separately)
+  const portalStairMat = mat('portalStair', 0x8a8899, 'portal-stair');
 
   function classifyStairVariant(vox3){
     // vox3[z][y][x], we inspect middle layer y=1 edges for platform (111)
@@ -388,39 +394,36 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     }
   }
 
-  // Detect any floor / ceiling occupancy & holes (portal stair variants)
-  let hasFloor=false, hasCeiling=false, hasFloorHole=false, hasCeilingHole=false;
-  for (let z=0; z<3; z++) for (let x=0; x<3; x++){
-    const fv = vox[z][0][x]; const cv = vox[z][2][x];
-    if (fv>0) hasFloor=true; else hasFloorHole=true;
-    if (cv>0) hasCeiling=true; else hasCeilingHole=true;
-  }
+  // Per-voxel floor / ceiling rendering strategy: emit a thin slab for each
+  // occupied voxel in the bottom (y=0) or top (y=2) layer instead of attempting
+  // to aggregate into a single full plate. This means:
+  //  - A layer of all 1s visually appears solid (because 9 slabs tile the area)
+  //  - Any holes remain open naturally
+  //  - A completely empty top or bottom layer produces no geometry at all
+  // Portal stair openness logic (skip floor for upper / ceiling for lower) is
+  // still applied independently below.
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
   if (v>0){
   // Do not skip mid layer when stairs present; we now combine walls with voxel ramps
-      let material = (v===2 ? stairMat : midMat);
+  let material = (v===2 ? (isPortal ? portalStairMat : stairMat) : midMat);
       let geomKind='mid';
+      // Portal stair openness adjustments:
+      // Lower portal (tileId 31) should NOT render a blocking ceiling; Upper portal (tileId 32)
+      // should NOT render a blocking floor so the pair visually connects.
+      if (isPortal){
+        if (isLower && y===2) { continue; } // remove ceiling plate parts
+        if (isUpper && y===0) { continue; } // remove floor plate parts
+      }
       if (y===0){
-        // If floor has any hole, emit per-cell thin slab for occupied cells only
-        if (hasFloor && !hasFloorHole){ // normal unified plate
-          if (!(x===0 && z===0)) { continue; }
-          material = floorMat; geomKind='floor_full';
-        } else {
-          if (v===0) continue; // skip hole cell
-          material = floorMat; geomKind='floor';
-        }
+        material = floorMat; geomKind='floor';
       }
       else if (y===2){
-        if (hasCeiling && !hasCeilingHole){
-          if (!(x===0 && z===0)) { continue; }
-          material = ceilingMat; geomKind='ceiling_full';
-        } else {
-          if (v===0) continue;
-          material = ceilingMat; geomKind='ceiling';
-        }
+        material = ceilingMat; geomKind='ceiling';
       }
       else if (y===1){
+        // For portal stair tiles, suppress all mid-layer solid fill voxels (keep only step meshes added earlier)
+        if (isPortal && v===1){ continue; }
         // Treat mid layer (including 'stair' voxels) as wall plates per orientation
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
         const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
@@ -432,6 +435,8 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         else if (hasZ && !hasX) geomKind='wall_zMajor';
         else if (hasX && hasZ) geomKind='wall_both';
         else geomKind='wall_both';
+        // Additional openness: remove lateral wall plates for portal stair tiles entirely
+        if (isPortal && (geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both')){ continue; }
       }
       // Decide per-axis emission to avoid duplicates and ensure boundary coverage
       let emitX = false, emitZ = false;
@@ -455,10 +460,11 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   let px = x*full + full/2;
   let py = unit/2;
   let pz = z*full + full/2;
-        if (geomKind==='floor' || geomKind==='floor_full') {
-          px = unit/2; pz = unit/2; py = y*full + thin/2; // full footprint
-        } else if (geomKind==='ceiling' || geomKind==='ceiling_full') {
-          px = unit/2; pz = unit/2; py = y*full + full - thin/2;
+        if (geomKind==='floor') {
+          // Per-voxel thin slab cell
+          px = x*full + full/2; pz = z*full + full/2; py = y*full + thin/2;
+        } else if (geomKind==='ceiling') {
+          px = x*full + full/2; pz = z*full + full/2; py = y*full + full - thin/2;
         } else if (geomKind==='wall_pillar') {
           // remain centered
         }

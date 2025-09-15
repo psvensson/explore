@@ -58,7 +58,7 @@ function commitTilePrototype(proto) {
  * @param {string[]} options.transforms - list of transform sequences ("", "ry", "ry+ry", etc.)
  * @returns {number} prototype index
  */
-export function createTileFormLayers(layers, tileId, { transforms = [] } = {}) {
+export function createTileFormLayers(layers, tileId, { transforms = [], meta = {} } = {}) {
   const voxels = layersToVoxels(layers);
   const protoIndex = protoTileIds.length;
   const proto = {
@@ -66,7 +66,8 @@ export function createTileFormLayers(layers, tileId, { transforms = [] } = {}) {
     tileId,                  // logical tile type id (used by higher-level grammar)
     voxels,                  // 3x3x3 numeric array
     size: [3,3,3],
-    transforms               // transform descriptors passed through to NDWFC3D
+    transforms,              // transform descriptors passed through to NDWFC3D
+    meta                     // arbitrary metadata (e.g., stairRole: 'lower' | 'upper')
   };
   protoTileIds.push(protoIndex);
   tilePrototypes.push(proto);
@@ -152,8 +153,9 @@ export function initializeTileset() {
       "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
-  // ---------------- need to think about those two - also to include ceiling in alltiles instead of double open layers
   // Lower Stair tile (Y rotations only, stair-up)
+  // Added richer metadata: axis (primary climb axis before rotation), dir (positive direction),
+  // requiredAboveEmpty: list of [z,y,x] coords in the ABOVE tile that must be empty when this tile is below.
   addTileFromLayers([
     [ "111",
       "111",
@@ -164,7 +166,14 @@ export function initializeTileset() {
     [ "000",
       "000",
       "020"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
+  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"], meta: {
+    role: 'stair',
+    stairRole: 'lower',
+    axis: 'z',
+    dir: 1,
+    // Player head clearance in tile above: demand central middle-layer cell above is empty
+    requiredAboveEmpty: [ [1,1,1] ] // [z,y,x] in the upper tile's local voxel space
+  } });
 
    // Upper Stair tile (Y rotations only, stair-down)
   addTileFromLayers([
@@ -177,7 +186,12 @@ export function initializeTileset() {
     [ "111",
       "111",
       "111"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"] });
+  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"], meta: {
+    role: 'stair',
+    stairRole: 'upper',
+    axis: 'z',
+    dir: 1
+  } });
 
 
   // Dead-end corridor (Y rotations only)

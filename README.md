@@ -43,6 +43,20 @@ npm test
 - Import map pins Three.js + OrbitControls for clean module specifiers.
 - `tileset.js` will throw if `NDWFC3D` (from `ndwfc.js`) isn't loaded first—`index.html` orders scripts accordingly.
 
+## Stair Pairing (Strategy A)
+To guarantee traversable vertical transitions, stair tiles are defined as an explicit lower/upper pair using shared `tileId=2` but different `meta.stairRole` values:
+- Lower stair: `meta.stairRole = 'lower'`
+- Upper stair: `meta.stairRole = 'upper'`
+
+The WFC rule assembly enforces a strict vertical constraint:
+- A lower stair tile may only have an upper stair directly above it.
+- An upper stair tile must sit directly on a lower stair.
+- Any other vertical pairing involving a stair is disallowed.
+
+Lateral adjacency for stairs remains unrestricted (they behave like ordinary space laterally), focusing constraints exclusively on vertical continuity. This approach prevents misaligned landings while keeping the rule set simple. A Jest test (`stair_vertical_constraint.test.js`) locks in this invariant.
+
+Potential future enhancements (Strategy B/C ideas) could add: multi-level landings, lateral offset allowances with explicit connector tiles, or probabilistic stair branching. Those would first require extending metadata (`stairGroupId`, `stairSpan`, etc.) before loosening vertical constraints.
+
 ## Third-Party Attribution
 This project includes code from:
 - LingDong Huang's ndwfc (https://github.com/LingDong-/ndwfc) — files: `docs/renderer/ndwfc.js`, `docs/renderer/ndwfc-tools.js` (MIT, see `docs/renderer/ndwfc-LICENSE`).

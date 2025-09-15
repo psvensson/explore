@@ -38,3 +38,26 @@ This component relies on the Three.js library. Ensure that it is included in you
 
 ## Conclusion
 The Renderer component is a crucial part of the dungeon visualization project, providing an interactive 3D experience. For further details on integration with other components, refer to the main project README and the documentation for the UI and Dungeon components.
+
+## WFC Dungeon Generation
+
+The function `window.generateWFCDungeon({x,y,z})` dynamically imports the tileset, WFC implementation, and mesh utilities, then:
+
+1. Initializes / registers tiles via `initializeTileset()`.
+2. Runs the WFC solver to produce a voxel grid.
+3. Converts the voxel grid to tile placements.
+4. Lazily ensures a Three.js namespace (`window.THREE` if already loaded by bootstrap, else dynamic import).
+5. Builds meshes and updates the main scene via `updateDungeonMesh`.
+6. Initializes the mini tile selection viewer (needs a valid THREE reference first).
+
+### Important Ordering Detail
+`THREERef` must be acquired **before** calling `setupMiniViewer` (or any function that uses THREE). A previous bug referenced `THREERef` prior to its declaration, causing the runtime error:
+
+```
+ReferenceError: can't access lexical declaration 'THREERef' before initialization
+```
+
+This was fixed by moving the acquisition of `THREERef` above the first usage. When modifying `generateWFCDungeon`, preserve this ordering.
+
+### Re-import Behavior
+If `window.THREE` already exists (bootstrapped on page load), the code reuses it to avoid duplicate network requests. Otherwise it performs a dynamic `import()` from the CDN.

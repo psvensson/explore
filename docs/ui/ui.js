@@ -34,6 +34,38 @@ export function initUI(rootId = 'control-panel') {
   });
   controlPanel.appendChild(generateWFCButton);
 
+  // Stair demo generation (minimal stair pair) button present in index.html
+  const stairDemoBtn = document.getElementById('generate-stair-demo');
+  if (stairDemoBtn){
+    stairDemoBtn.addEventListener('click', ()=>{
+      if (window.generateStairDemo) window.generateStairDemo();
+    });
+  }
+
+  // Debug toggles wrapper
+  const debugWrap = document.createElement('div');
+  debugWrap.style.marginTop='10px';
+  debugWrap.style.fontSize='12px';
+  debugWrap.style.display='flex';
+  debugWrap.style.flexDirection='column';
+  debugWrap.style.gap='4px';
+
+  const tileIdToggle = document.createElement('label');
+  tileIdToggle.style.cursor='pointer';
+  tileIdToggle.innerHTML = '<input id="toggle-tileids" type="checkbox" style="vertical-align:middle;margin-right:6px"/> Show Tile IDs';
+  debugWrap.appendChild(tileIdToggle);
+  controlPanel.appendChild(debugWrap);
+
+  // Persist state across regenerations (session only)
+  if (window.__SHOW_TILE_IDS) document.getElementById('toggle-tileids').checked = true;
+  tileIdToggle.addEventListener('change', (e)=>{
+    const checked = document.getElementById('toggle-tileids').checked;
+    window.__SHOW_TILE_IDS = checked;
+    if (window.dungeonRenderer && window.dungeonRenderer.rebuildTileIdOverlays){
+      window.dungeonRenderer.rebuildTileIdOverlays();
+    }
+  });
+
   // Build/version label (auto-updated by pre-commit hook)
   const versionEl = document.createElement('div');
   versionEl.style.marginTop = '10px';

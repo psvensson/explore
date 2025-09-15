@@ -24,6 +24,9 @@
         <section id="ui-controls">
             <h2>Generator</h2>
             <div id="control-panel"></div>
+                        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                            <button id="generate-stair-demo" style="flex:1 1 220px;">Generate Stair Demo</button>
+                        </div>
             <p style="font-size:0.85em;color:#224;max-width:480px;line-height:1.2em;margin-top:8px">Press <strong>F</strong> to toggle FPS / Orbit camera. In FPS mode use <strong>W A S D</strong> to move, <strong>Space</strong> up, <strong>Shift</strong> down, and move the mouse to look around (click canvas to lock pointer).</p>
             <!-- UI controls will be dynamically generated here -->
         </section>
@@ -31,19 +34,24 @@
             <h2>View</h2>
             <div id="threejs-canvas" style="width: 100%; height: 90vh; min-height:760px;"></div>
         </section>
-        <section id="ascii-map-section">
-            <h2>ASCII Map (Layers Low→High)</h2>
-            <pre id="ascii-map" style="background:#0b1522;color:#cfe6ff;padding:12px 14px;border-radius:6px;overflow:auto;max-height:600px;min-height:260px;font-size:12px;line-height:1.15"></pre>
-            <div style="font-size:12px;color:#445a74;margin-top:6px">Legend: <code>.</code> empty, <code>#</code> solid, <code>v</code>/<code>^</code> stairs</div>
-                        <div id="tile-block-browser" style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap"></div>
-                        <div id="mini-viewer-wrapper" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
-                            <div style="display:flex;align-items:center;justify-content:space-between">
-                                <strong style="font-size:13px;letter-spacing:0.5px">Selected Tiles Preview</strong>
-                                <button id="clear-selected-tiles" style="flex:0 0 auto;width:auto;padding:4px 10px;font-size:11px">Clear</button>
+                <section id="ascii-map-section">
+                        <h2>ASCII Map (Layers Low→High)</h2>
+                        <div class="ascii-mini-wrapper">
+                            <div class="ascii-panel">
+                                <pre id="ascii-map" class="ascii-map"></pre>
+                                <div class="legend">Legend: <code>.</code> empty, <code>#</code> solid, <code>v</code>/<code>^</code> stairs</div>
                             </div>
-                            <div id="mini-viewer" style="background:#0b1522;border:1px solid #1b4469;height:320px;position:relative;border-radius:6px"></div>
+                            <div class="mini-panel">
+                                <div class="mini-header">
+                                    <strong>Selected Tiles Preview</strong>
+                                    <button id="clear-selected-tiles" class="mini-clear">Clear</button>
+                                </div>
+                                <div id="mini-viewer" class="mini-viewer" tabindex="0" aria-label="Mini tile viewer (click to rotate, Esc to deselect)"></div>
+                                <div class="mini-hint">Click to focus, drag to rotate, wheel to zoom, Esc to deselect.</div>
+                            </div>
                         </div>
-        </section>
+                        <div id="tile-block-browser" class="tile-block-browser"></div>
+                </section>
         <!-- Removed redundant classic generator section -->
     </main>
     <!-- Tileset module (NDWFC prototypes). NDWFC core dynamically imported on demand. -->

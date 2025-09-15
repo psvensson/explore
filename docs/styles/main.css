@@ -21,14 +21,22 @@ header {
 }
 
 section#ui-controls, section#renderer, section#ascii-map-section {
-        background:#0f2740;
-        border:1px solid #1b4469;
-        border-radius:8px;
-        padding:14px 18px 18px;
-        margin:16px auto;
-        max-width:1100px;
-        box-shadow:0 2px 6px rgba(0,0,0,0.35);
+    background:#0f2740;
+    border:1px solid #1b4469;
+    border-radius:8px;
+    padding:14px 18px 18px;
+    margin:16px auto;
+    max-width:1400px; /* widened from 1100 */
+    box-shadow:0 2px 6px rgba(0,0,0,0.35);
 }
+
+/* Make renderer section use more horizontal space on large screens */
+@media (min-width:1500px){
+  section#renderer { max-width:1600px; }
+}
+
+/* Ensure the 3D canvas stretches edge-to-edge inside its container */
+#threejs-canvas { width:100% !important; }
 section#ui-controls h2, section#renderer h2, section#ascii-map-section h2 { margin-top:0; font-weight:600; letter-spacing:0.5px; }
 
 #control-panel input[type=number]{
@@ -65,4 +73,23 @@ button:hover { background-color:#163852; }
     text-align: center;
     font-size: 0.9em;
     color: #666;
+}
+
+/* Side-by-side ASCII + Mini viewer */
+.ascii-mini-wrapper { display:flex; gap:18px; align-items:stretch; flex-wrap:wrap; }
+.ascii-panel { flex:1 1 480px; min-width:300px; display:flex; flex-direction:column; }
+.mini-panel { flex:0 1 360px; min-width:300px; display:flex; flex-direction:column; }
+.ascii-map { background:#0b1522; color:#cfe6ff; padding:12px 14px; border-radius:6px; overflow:auto; max-height:600px; min-height:260px; font-size:12px; line-height:1.15; border:1px solid #1b4469; }
+.legend { font-size:12px; color:#445a74; margin-top:6px; }
+.mini-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.mini-clear { flex:0 0 auto; width:auto; padding:4px 10px; font-size:11px; }
+.mini-viewer { background:#0b1522; border:1px solid #1b4469; height:320px; position:relative; border-radius:6px; outline:none; cursor:grab; }
+.mini-viewer:active { cursor:grabbing; }
+.mini-viewer.active { box-shadow:0 0 0 2px #3fa0ff; border-color:#3fa0ff; }
+.mini-hint { font-size:10px; color:#476a88; margin-top:6px; letter-spacing:0.3px; }
+.tile-block-browser { display:flex; gap:16px; margin-top:14px; flex-wrap:wrap; }
+
+@media (max-width: 1100px){
+    .ascii-mini-wrapper { flex-direction:column; }
+    .mini-panel { order:2; }
 }

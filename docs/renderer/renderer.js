@@ -142,6 +142,46 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     document.addEventListener('pointerlockchange', ()=>{ if (mode==='fps' && !document.pointerLockElement){ /* lost lock -> drop to orbit? */ } });
   }
   const instance = { scene, camera: activeCamera, orbitCamera, fpsCamera, renderer, controls, resize, enableFPS, enableOrbit, toggleCamera, get mode(){ return mode; }, THREE };
+  // Debug overlay rebuild (defined after generateWFCDungeon assigns lastTiles)
+  instance.rebuildTileIdOverlays = function rebuildTileIdOverlays(){
+    if (!window.__SHOW_TILE_IDS){
+      // remove existing overlay group if present
+      if (instance._tileIdOverlayGroup){
+        try { scene.remove(instance._tileIdOverlayGroup); } catch(_){}
+        instance._tileIdOverlayGroup = null;
+      }
+      return;
+    }
+    const THREERef = instance.THREE;
+    if (!(THREERef && THREERef.Sprite && THREERef.SpriteMaterial && THREERef.CanvasTexture)) return;
+    // remove previous
+    if (instance._tileIdOverlayGroup) { try { scene.remove(instance._tileIdOverlayGroup); } catch(_){} }
+    const g = new THREERef.Group(); g.userData.keep = true; g.name='TileIdOverlayGroup';
+    const tiles = instance.lastTiles || [];
+    const cache = new Map();
+    function makeTexture(id){
+      if (cache.has(id)) return cache.get(id);
+      const size=64; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
+      ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(0,0,size,size);
+      ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.strokeRect(1,1,size-2,size-2);
+      ctx.fillStyle='#ffe27a'; ctx.font='28px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(String(id), size/2, size/2);
+      const tex = new THREERef.CanvasTexture(c); tex.needsUpdate=true; cache.set(id, tex); return tex;
+    }
+    for (const t of tiles){
+      const tex = makeTexture(t.tileId);
+      const mat = new THREERef.SpriteMaterial({ map: tex, transparent:true, depthTest:false, depthWrite:false });
+      const sprite = new THREERef.Sprite(mat);
+      // World position (x,z,y mapping) -> x: tileX*3 + 1.5
+      const wx = t.position[2]*3 + 1.5;
+      const wy = t.position[1]*3 + 3.2; // float slightly above tile top
+      const wz = t.position[0]*3 + 1.5;
+      sprite.position.set(wx, wy, wz);
+      const scale = 2.2; sprite.scale.set(scale, scale, 1);
+      g.add(sprite);
+    }
+    scene.add(g); instance._tileIdOverlayGroup = g;
+  };
   // Helper APIs
   instance.resetView = function resetView() {
     orbitCamera.position.set(0, 40, 110);
@@ -238,28 +278,26 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         }
         const metas = tilePrototypes.map(protoMeta);
         function canStack(upper, lower){
-          const upperProto = tilePrototypes[upper];
-          const lowerProto = tilePrototypes[lower];
-          // Lower stair (31) must be directly below upper stair (32) or any non-stair solid ceiling tile can sit over non-stair floor.
-          if (lowerProto.tileId===31) {
-            return upperProto.tileId===32; // enforce explicit pairing
-          }
-          if (upperProto.tileId===32) {
-            // Only allow upper stair above a lower stair
-            return lowerProto.tileId===31;
-          }
-          // Non-stair tiles: simple (always) vertical compatibility (floor/ceiling now ignored for headroom model)
-          return true;
+          const up = tilePrototypes[upper];
+          const low = tilePrototypes[lower];
+          const lowerRole = low.meta && low.meta.stairRole;
+          const upperRole = up.meta && up.meta.stairRole;
+          const isLower = lowerRole === 'lower';
+          const isUpper = upperRole === 'upper';
+          if (isLower) return isUpper;       // lower stair must have upper stair directly above
+          if (isUpper) return (lowerRole === 'lower'); // upper stair must sit on a lower stair
+          return true; // non-stair combinations unrestricted for now
         }
         // Axis token mapping in underlying WFC: dim0->'y', dim1->'x', dim2->'z'
         // We want: horizontal X adjacency -> dim0 token 'y'; vertical Y adjacency -> dim1 token 'x'; horizontal Z adjacency -> dim2 token 'z'.
         const rules = [];
-        for (let a=0;a<n;a++) for (let b=0;b<n;b++){
-          // Allow all lateral neighbors along model X (dim0) and Z (dim2) for now
-          rules.push(['y',a,b]); // dim0 (X) adjacency
-          rules.push(['z',a,b]); // dim2 (Z) adjacency
-          // Constrain vertical stacking (dim1) via canStack
-          if (canStack(b,a)) rules.push(['x',a,b]); // dim1 (Y) adjacency: b above a
+        for (let a=0;a<n;a++){
+          for (let b=0;b<n;b++){
+            // Lateral adjacency always allowed regardless of stair status (Strategy A focuses only vertical lock)
+            rules.push(['y',a,b]);
+            rules.push(['z',a,b]);
+            if (canStack(b,a)) rules.push(['x',a,b]);
+          }
         }
         const WFC = WFCMod.default || WFCMod.WFC || WFCMod;
         const wf = new WFC({ nd:3, weights, rules });
@@ -287,7 +325,9 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
           if (pre) pre.textContent = ascii;
         } catch(_) {}
         // Parse into tile placements
-        const tiles = meshUtil.parseVoxelGridToTiles(grid);
+  const tiles = meshUtil.parseVoxelGridToTiles(grid);
+  // Store tiles with tileId for debug overlay
+  instance.lastTiles = tiles.map(t => ({ ...t, tileId: tilePrototypes[t.prototypeIndex].tileId }));
 
         // Build per-tile ascii mini blocks (3x3x3) for selection browsing
         try {
@@ -328,10 +368,11 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
           }
         } catch(e){ console.warn('tile block browser build failed', e); }
 
-        // Mini viewer selection handling
-        setupMiniViewer(tiles, meshUtil, THREERef);
-        // Build group
-  const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
+    // Acquire THREE reference (prefer already-loaded global to avoid duplicate network fetch)
+    const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
+    // Mini viewer selection handling (needs THREERef defined first)
+    setupMiniViewer(tiles, meshUtil, THREERef);
+    // Build group
   const group = new THREERef.Group();
         tiles.forEach(t => {
           const gm = meshUtil.buildTileMesh({THREE: THREERef, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
@@ -339,8 +380,80 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
           group.add(gm);
         });
   updateDungeonMesh(group);
+  // Build overlays if requested
+  if (window.__SHOW_TILE_IDS && instance.rebuildTileIdOverlays){ instance.rebuildTileIdOverlays(); }
       } catch(e){ console.error('WFC generation failed', e); }
     };
+  // Minimal stair demo: constructs a 1x2x1 tile column with lower+upper stair only (no WFC randomness)
+  window.generateStairDemo = async function(){
+    try {
+      const [{ initializeTileset, tilePrototypes }, meshUtil] = await Promise.all([
+        import('../dungeon/tileset.js'),
+        import('./wfc_tile_mesh.js')
+      ]);
+      if (!window.NDWFC3D) window.NDWFC3D = function(){};
+      initializeTileset();
+      // Identify lower & upper stair prototypes via meta.stairRole
+      let lowerIdx = tilePrototypes.findIndex(p=> p.meta && p.meta.stairRole==='lower');
+      let upperIdx = tilePrototypes.findIndex(p=> p.meta && p.meta.stairRole==='upper');
+      if (lowerIdx<0 || upperIdx<0){
+        // Fallback heuristic: detect by tileId patterns of '2' or by legacy IDs 31/32 ordering
+        // Legacy case: tileIds 31 (lower) and 32 (upper)
+        const legacyLower = tilePrototypes.findIndex(p=> p.tileId===31);
+        const legacyUpper = tilePrototypes.findIndex(p=> p.tileId===32);
+        if (legacyLower>=0 && legacyUpper>=0){ lowerIdx=legacyLower; upperIdx=legacyUpper; }
+      }
+      if (lowerIdx<0 || upperIdx<0) throw new Error('Stair prototypes not found');
+      const tiles = [
+        { prototypeIndex: lowerIdx, rotationY:0, position:[0,0,0] }, // (z,y,x) order in existing pipeline
+        { prototypeIndex: upperIdx, rotationY:0, position:[0,1,0] }
+      ];
+      instance.lastTiles = tiles.map(t=> ({ ...t, tileId: tilePrototypes[t.prototypeIndex].tileId }));
+      // Build ASCII view (compose manual voxel grid 3x6x3)
+      const gridZ=3, gridY=6, gridX=3; const grid = Array.from({length:gridZ},()=>Array.from({length:gridY},()=>Array(gridX).fill(0)));
+      function paint(protoIndex, ty){
+        const vox = tilePrototypes[protoIndex].voxels;
+        for (let zz=0; zz<3; zz++) for (let yy=0; yy<3; yy++) for (let xx=0; xx<3; xx++){
+          grid[zz][ty*3+yy][xx] = vox[zz][yy][xx];
+        }
+      }
+      paint(lowerIdx,0); paint(upperIdx,1);
+      try {
+        const ascii = (function(grid){
+          const Z=grid.length, Y=grid[0].length, X=grid[0][0].length; const lines=['Legend: #=solid .=empty v=portal-lower ^=portal-upper'];
+          for (let y=0;y<Y;y++){
+            lines.push(`-- Layer y=${y} --`);
+            for (let z=0; z<Z; z++){
+              let row='';
+              for (let x=0;x<X;x++){
+                const v = grid[z][y][x];
+                if (v===0){ row+='.'; continue; }
+                if (v===2){
+                  const below = (y>0)? grid[z][y-1][x]:1; const above=(y<Y-1)?grid[z][y+1][x]:1;
+                  if (below===0 && above!==0) row+='v'; else if (below!==0 && above===0) row+='^'; else row+='^';
+                  continue;
+                }
+                row+='#';
+              }
+              lines.push(row);
+            }
+            lines.push('');
+          }
+          return lines.join('\n');
+        })(grid);
+        const pre = document.getElementById('ascii-map'); if (pre) pre.textContent = ascii;
+      } catch(_){ }
+      const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
+      const group = new THREERef.Group();
+      tiles.forEach(t=>{
+        const gm = meshUtil.buildTileMesh({THREE:THREERef, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
+        gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3);
+        group.add(gm);
+      });
+      updateDungeonMesh(group);
+      if (window.__SHOW_TILE_IDS && instance.rebuildTileIdOverlays){ instance.rebuildTileIdOverlays(); }
+    } catch(e){ console.error('Stair demo generation failed', e); }
+  };
   }
   function setupMiniViewer(tiles, meshUtil, THREERef){
     const miniContainer = document.getElementById('mini-viewer');
@@ -353,11 +466,21 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
       miniContainer.appendChild(renderer.domElement);
       const scene = new THREERef.Scene();
       const camera = new THREERef.PerspectiveCamera(60, miniContainer.clientWidth/miniContainer.clientHeight, 0.1, 500);
-      camera.position.set(25,25,25); camera.lookAt(0,0,0);
+      // Initial camera spherical parameters
+      const spherical = { radius:40, theta:Math.PI*0.25, phi:Math.PI*0.35 }; // phi from +Y downwards
+      function syncCamera(){
+        const r = spherical.radius;
+        const sinPhi = Math.sin(spherical.phi);
+        const x = r * sinPhi * Math.cos(spherical.theta);
+        const z = r * sinPhi * Math.sin(spherical.theta);
+        const y = r * Math.cos(spherical.phi);
+        camera.position.set(x,y,z); camera.lookAt(0,0,0);
+      }
+      syncCamera();
       const amb = new THREERef.AmbientLight(0xffffff,0.6); scene.add(amb);
       const dir = new THREERef.DirectionalLight(0xffffff,0.8); dir.position.set(30,50,20); scene.add(dir);
       const grid = new THREERef.GridHelper(120, 24, 0x335577, 0x223344); scene.add(grid);
-      miniContainer._mini = { renderer, scene, camera, selection:[] };
+      miniContainer._mini = { renderer, scene, camera, selection:[], spherical, active:false };
       function animateMini(){ requestAnimationFrame(animateMini); renderer.render(scene,camera); }
       animateMini();
       window.addEventListener('resize', ()=>{
@@ -366,6 +489,24 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
       });
       const clearBtn = document.getElementById('clear-selected-tiles');
       if (clearBtn){ clearBtn.onclick = ()=>{ miniContainer._mini.selection=[]; rebuildMiniScene(); [...browser.querySelectorAll('.tile-block')].forEach(b=>b.dataset.selected='false'); }; }
+      // Interaction handlers (activate on click)
+      let dragging=false; let lastX=0, lastY=0;
+      function setActive(a){
+        miniContainer._mini.active = a; if (a){ miniContainer.classList.add('active'); miniContainer.focus(); } else { miniContainer.classList.remove('active'); }
+      }
+      miniContainer.addEventListener('click', (e)=>{ setActive(true); });
+      miniContainer.addEventListener('mousedown', (e)=>{ if (!miniContainer._mini.active) return; dragging=true; lastX=e.clientX; lastY=e.clientY; });
+      window.addEventListener('mouseup', ()=> dragging=false);
+      window.addEventListener('mousemove', (e)=>{
+        if (!dragging || !miniContainer._mini.active) return;
+        const dx = e.clientX-lastX; const dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+        const sp = miniContainer._mini.spherical;
+        sp.theta -= dx * 0.005;
+        sp.phi -= dy * 0.005; sp.phi = Math.max(0.15, Math.min(Math.PI-0.15, sp.phi));
+        syncCamera();
+      });
+      miniContainer.addEventListener('wheel', (e)=>{ if (!miniContainer._mini.active) return; const sp=miniContainer._mini.spherical; sp.radius *= (1 + Math.sign(e.deltaY)*0.08); sp.radius = Math.max(5, Math.min(400, sp.radius)); syncCamera(); });
+      window.addEventListener('keydown', (e)=>{ if (e.key==='Escape' && miniContainer._mini.active){ setActive(false); } });
     }
     function rebuildMiniScene(){
       const { scene } = miniContainer._mini; // remove previous non-lights/grid
@@ -382,6 +523,19 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         gm.position.set(ox, oy, oz);
         scene.add(gm);
       });
+      // Zoom-to-fit: compute bounding box of selection and adjust spherical radius
+      try {
+        if (THREERef.Box3 && THREERef.Vector3){
+          const box = new THREERef.Box3(); box.setFromObject(scene);
+          const size = new THREERef.Vector3(); box.getSize(size);
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const sp = miniContainer._mini.spherical; // aim so object roughly fills height
+          sp.radius = maxDim * 1.6; // cushion factor
+          // Recenter camera lookAt already at origin; no need to shift unless future offset
+          // Slightly elevate phi if object tall
+          if (size.y > size.x*0.8) sp.phi = Math.PI*0.35;
+        }
+      } catch(_){ /* non-fatal */ }
     }
     browser.onclick = function(e){
       const block = e.target.closest('.tile-block');
