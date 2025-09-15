@@ -21,20 +21,20 @@ describe('tileset', () => {
 
   test('initializes expected number of prototypes and registers each', () => {
     const info = initializeTileset();
-    // Updated tileset now has 11 prototypes after portal stair refactor
-    expect(tilePrototypes.length).toBe(11);
-    expect(protoTileIds.length).toBe(11);
-    expect(global.NDWFC3D.callCount()).toBe(11);
+    // Updated tileset now has 10 prototypes after normalization
+    expect(tilePrototypes.length).toBe(10);
+    expect(protoTileIds.length).toBe(10);
+    expect(global.NDWFC3D.callCount()).toBe(10);
     expect(info.emptyWithFloorProtoIdx).toBeGreaterThanOrEqual(0);
     expect(info.solidProtoIdx).toBeGreaterThan(info.emptyWithFloorProtoIdx);
   });
 
   test('idempotent initializeTileset does not duplicate', () => {
     initializeTileset();
-    expect(global.NDWFC3D.callCount()).toBe(11);
+    expect(global.NDWFC3D.callCount()).toBe(10);
     initializeTileset();
-    expect(tilePrototypes.length).toBe(11);
-    expect(global.NDWFC3D.callCount()).toBe(11);
+    expect(tilePrototypes.length).toBe(10);
+    expect(global.NDWFC3D.callCount()).toBe(10);
   });
 
   test('solid cube prototype voxels all 1s', () => {
@@ -59,6 +59,26 @@ describe('tileset', () => {
     const any = tilePrototypes.find(p=> Array.isArray(p.transforms) && p.transforms.length===3);
     expect(any).toBeTruthy();
     expect(any.transforms).toEqual(["ry","ry+ry","ry+ry+ry"]);
+  });
+
+  test('only portal tiles have holes in floor or ceiling', () => {
+    initializeTileset();
+    function layerHasHoleRow(voxels, yRow) {
+      for (let z=0; z<3; z++) {
+        for (let x=0; x<3; x++) {
+          if (voxels[z][yRow][x] === 0) return true; // hole (absence) in that full row position
+        }
+      }
+      return false;
+    }
+    const portalIds = new Set([31,32]);
+    for (const proto of tilePrototypes) {
+      const hasFloorHole = layerHasHoleRow(proto.voxels,0) && proto.voxels.some(zLayer=>zLayer[0].some(v=>v===0));
+      const hasCeilingHole = layerHasHoleRow(proto.voxels,2) && proto.voxels.some(zLayer=>zLayer[2].some(v=>v===0));
+      if (hasFloorHole || hasCeilingHole) {
+        expect(portalIds.has(proto.tileId)).toBe(true);
+      }
+    }
   });
 
   test('rejects incorrect layer count', () => {

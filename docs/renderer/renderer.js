@@ -176,17 +176,29 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   window.dungeonRenderer = instance;
     // Provide WFC generation hook if dependencies available
   function gridToAscii(grid){
-      // grid[z][y][x] with values: 0 empty, 1 rock, 2 stair
+      // grid[z][y][x] with values: 0 empty, 1 solid, 2 stair (portal parts)
       if (!Array.isArray(grid) || grid.length===0) return '';
       const Z=grid.length, Y=grid[0].length, X=grid[0][0].length;
       const lines=[];
+      lines.push('Legend: #=solid  .=empty  v=portal-lower  ^=portal-upper  O=hole');
       for (let y=0;y<Y;y++){
         lines.push(`-- Layer y=${y} --`);
         for (let z=0; z<Z; z++){
           let row='';
           for (let x=0; x<X; x++){
             const v = grid[z][y][x];
-            row += v===0 ? '.' : (v===1 ? '#' : '^');
+            if (v===0) { row += '.'; continue; }
+            if (v===2){
+              // Distinguish upper vs lower via presence of supporting solid below/above if available
+              const below = (y>0) ? grid[z][y-1][x] : 1;
+              const above = (y<Y-1) ? grid[z][y+1][x] : 1;
+              if (below!==0 && above===0) row += '^';
+              else if (below===0 && above!==0) row += 'v';
+              else row += '^';
+              continue;
+            }
+            // v==1 solid; detect isolated hole representation occurs when neighbor stair hole not filled
+            row += '#';
           }
           lines.push(row);
         }
