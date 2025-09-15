@@ -26,16 +26,16 @@ export function initializeTileset(){
 	// Refactored portal-style stair pair (lower -> upper) with full headroom.
 	// Lower stair: solid floor (y=0) across tile, fully open ceiling (y=2 = 000) for unobstructed ascent.
 	addTileFromLayers([
-		["111","000","000"], // z=0 (floor solid, mid empty, ceiling open)
-		["111","020","000"], // z=1 (central stair voxel '2', open ceiling above)
-		["111","000","000"]  // z=2
+		["101","000","000"], // narrow central support instead of full floor
+		["101","020","000"], // stair voxel centered, same support
+		["101","000","000"]
 	],31,{transforms:["ry","ry+ry","ry+ry+ry"]});
 
 	// Upper stair: fully open floor (y=0 = 000) to receive ascent, solid ceiling (y=2) to preserve level separation.
 	addTileFromLayers([
-		["000","000","111"], // z=0 (open floor below, solid ceiling row)
-		["000","020","111"], // z=1 (central stair voxel continuing path)
-		["000","000","111"]  // z=2
+		["000","000","101"], // ceiling only narrow support strip
+		["000","020","101"], // stair voxel under strip
+		["000","000","101"]
 	],32,{transforms:["ry","ry+ry","ry+ry+ry"]});
 
 	// Other structural variants (kept)
