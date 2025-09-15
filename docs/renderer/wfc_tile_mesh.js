@@ -335,65 +335,54 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   }
 
   // Build a central ramp (snug to floor, rising to half tile height) and a back-row platform
+  // --- New stacked stair rendering (three discrete steps) ---
   const stairVoxels = [];
-  for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
-    if (vox[z][y][x]===2) stairVoxels.push({x,y,z});
-  }
-  function inferAxisDirForVoxel(vx, vy, vz){
-    // Decide axis by checking adjacent solid (1) distribution in mid layer around the stair voxel
-    let countXNeg=0, countXPos=0, countZNeg=0, countZPos=0;
-    for (let y=0;y<3;y++){
-      if (vx>0 && vox[vz][y][vx-1]>0) countXNeg++;
-      if (vx<2 && vox[vz][y][vx+1]>0) countXPos++;
-      if (vz>0 && vox[vz-1][y][vx]>0) countZNeg++;
-      if (vz<2 && vox[vz+1][y][vx]>0) countZPos++;
-    }
-    const xSpan = countXNeg + countXPos;
-    const zSpan = countZNeg + countZPos;
-    let axis = (zSpan >= xSpan) ? 'z' : 'x';
-    let dir;
-    if (axis==='z') dir = (countZPos >= countZNeg) ? +1 : -1;
-    else dir = (countXPos >= countXNeg) ? +1 : -1;
-    return {axis, dir};
-  }
+  for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++) if (vox[z][y][x]===2) stairVoxels.push({x,y,z});
+  let stairAxis=null, stairDir=+1, isPortal=false, isLower=false, isUpper=false;
   if (stairVoxels.length){
-    // Prefer the central stair voxel; fallback to the first one
-    let center = stairVoxels.find(v => v.x===1 && v.y===1 && v.z===1) || stairVoxels[0];
-    const classified = classifyStairVariant(vox) || inferAxisDirForVoxel(center.x, center.y, center.z);
-    const axis = classified.axis, dir = classified.dir;
-    // Central ramp: voxel footprint, half-tile height, anchored to floor
-    const rampGeom = createHalfTileHeightRampGeometry(axis, dir);
-    const rampMesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(rampGeom, stairMat);
-    if (rampMesh.position && rampMesh.position.set){
-      const full = unit/3;
-      const thin = full*0.1;
-      const px = 1*full + full/2; // central voxel
-      const py = thin;            // base sits snug on floor top
-      const pz = 1*full + full/2;
-      rampMesh.position.set(px, py, pz);
-    }
-    group.add(rampMesh);
-
-    // Back-row platform: full width, half height, 1/3 length at the "back" side of the ramp
-    const backGeom = (THREE.BoxGeometry||function(){});
-    if (axis==='z'){
-      const geom = new backGeom(unit, unit/2, unit/3);
-      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
-      if (mesh.position && mesh.position.set){
-        const full = unit/3; const thin = full*0.1;
-        const pz = (dir>0) ? (unit - unit/6) : (unit/6);
-        const py = thin + (unit/2)/2; // centered half-height box resting on floor top
-        mesh.position.set(unit/2, py, pz);
+    const protoId = proto.tileId;
+    if (protoId===31 || protoId===32){ isPortal=true; isLower=protoId===31; isUpper=protoId===32; }
+    // Axis & direction using classify then fallback heuristic
+    function inferAxisDir(){
+      const center = stairVoxels.find(v=>v.x===1 && v.y===1 && v.z===1) || stairVoxels[0];
+      // Check surrounding solid mid voxels to guess direction
+      let countXP=0,countXN=0,countZP=0,countZN=0;
+      for (let y=0;y<3;y++){
+        if (center.x<2 && vox[center.z][y][center.x+1]>0) countXP++; if (center.x>0 && vox[center.z][y][center.x-1]>0) countXN++;
+        if (center.z<2 && vox[center.z+1] && vox[center.z+1][y][center.x]>0) countZP++; if (center.z>0 && vox[center.z-1] && vox[center.z-1][y][center.x]>0) countZN++;
       }
-      group.add(mesh);
-    } else { // axis x
-      const geom = new backGeom(unit/3, unit/2, unit);
-      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, midMat);
+      const xSpan = countXP+countXN, zSpan=countZP+countZN;
+      let axis = (zSpan>=xSpan)?'z':'x';
+      let dir = 1;
+      if (axis==='z') dir = (countZP>=countZN)? +1 : -1; else dir = (countXP>=countXN)? +1 : -1;
+      return {axis, dir};
+    }
+    const classified = classifyStairVariant(vox) || inferAxisDir();
+    stairAxis = classified.axis; stairDir = classified.dir;
+    // Create 3 steps: each 1/3 height, increasing along travel axis
+    const full = unit/3; const stepHeight = unit/3; const treadDepth = unit/3; const thin = full*0.1;
+    const StepGeom = THREE.BoxGeometry||function(){};
+    for (let i=0;i<3;i++){
+      const geom = new StepGeom(
+        stairAxis==='x'? treadDepth : unit/3, // width along x
+        stepHeight,                            // height
+        stairAxis==='z'? treadDepth : unit/3   // width along z
+      );
+      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, stairMat);
       if (mesh.position && mesh.position.set){
-        const full = unit/3; const thin = full*0.1;
-        const px = (dir>0) ? (unit - unit/6) : (unit/6);
-        const py = thin + (unit/2)/2; // centered half-height box resting on floor top
-        mesh.position.set(px, py, unit/2);
+        // position baseline
+        let xPos = unit/2, zPos = unit/2;
+        // offset along axis from start
+        const offset = (i + 0.5) * treadDepth; // center each step segment
+        if (stairAxis==='z'){
+          const startZ = (stairDir>0)? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
+          zPos = startZ + (stairDir>0? offset : -offset);
+        } else {
+          const startX = (stairDir>0)? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
+          xPos = startX + (stairDir>0? offset : -offset);
+        }
+        const yPos = thin + (i+0.5)*stepHeight; // stack steps upward from floor top
+        mesh.position.set(xPos, yPos, zPos);
       }
       group.add(mesh);
     }
@@ -435,6 +424,10 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         // Treat mid layer (including 'stair' voxels) as wall plates per orientation
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
         const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
+        if (stairVoxels.length && x===1 && z===1){
+          // Suppress central mid pillar when stairs present
+          continue;
+        }
         if (hasX && !hasZ) geomKind='wall_xMajor';
         else if (hasZ && !hasX) geomKind='wall_zMajor';
         else if (hasX && hasZ) geomKind='wall_both';

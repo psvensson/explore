@@ -31,4 +31,19 @@ describe('wfc tile mesh parsing', () => {
     const group = buildTileMesh({THREE, prototypeIndex: idx, rotationY:0, unit:3});
     expect(group.children.length).toBeGreaterThan(0);
   });
+
+  test('portal lower stair renders exactly three step meshes', () => {
+    const lowerIdx = tilePrototypes.findIndex(p=> p.tileId===31);
+    expect(lowerIdx).toBeGreaterThan(-1);
+    const THREE = {
+      Group: class { constructor(){ this.children=[];} add(c){this.children.push(c);} },
+      BoxGeometry: class { constructor(){} },
+      MeshStandardMaterial: class { constructor(cfg){ this.cfg=cfg; } },
+      Mesh: class { constructor(g,m){ this.geom=g; this.material=m; this.position={set(){}}; } }
+    };
+    const group = buildTileMesh({THREE, prototypeIndex: lowerIdx, rotationY:0, unit:3});
+    // Count meshes tagged stair material type
+    const stairMeshes = group.children.filter(c=> c.material && c.material.userData && c.material.userData.type==='stair');
+    expect(stairMeshes.length).toBe(3);
+  });
 });
