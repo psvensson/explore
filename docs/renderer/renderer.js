@@ -241,12 +241,15 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
           if (lo.hasHoleCeiling !== up.hasHoleFloor) return false;
           return true;
         }
+        // Axis token mapping in underlying WFC: dim0->'y', dim1->'x', dim2->'z'
+        // We want: horizontal X adjacency -> dim0 token 'y'; vertical Y adjacency -> dim1 token 'x'; horizontal Z adjacency -> dim2 token 'z'.
         const rules = [];
         for (let a=0;a<n;a++) for (let b=0;b<n;b++){
-          // x & z remain fully permissive for now
-          rules.push(['x',a,b]);
-          rules.push(['z',a,b]);
-          if (canStack(b,a)) rules.push(['y',a,b]); // place b above a if stacking valid
+          // Allow all lateral neighbors along model X (dim0) and Z (dim2) for now
+          rules.push(['y',a,b]); // dim0 (X) adjacency
+          rules.push(['z',a,b]); // dim2 (Z) adjacency
+          // Constrain vertical stacking (dim1) via canStack
+          if (canStack(b,a)) rules.push(['x',a,b]); // dim1 (Y) adjacency: b above a
         }
         const WFC = WFCMod.default || WFCMod.WFC || WFCMod;
         const wf = new WFC({ nd:3, weights, rules });
