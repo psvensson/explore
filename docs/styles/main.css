@@ -37,6 +37,14 @@ section#ui-controls h2, section#renderer h2, section#ascii-map-section h2 { marg
 #control-panel label { margin-right:12px; font-size:13px; }
 #control-panel button { width:100%; }
 
+/* Tile block gallery */
+.tile-block { cursor:pointer; user-select:none; font-family:monospace; font-size:10px; line-height:10px; padding:6px 6px 4px; background:#0b1522; border:1px solid #1b4469; border-radius:4px; display:inline-block; min-width:52px; position:relative; }
+.tile-block[data-selected="true"] { outline:2px solid #3fa0ff; border-color:#3fa0ff; }
+.tile-block .coord { position:absolute; top:2px; right:4px; font-size:9px; color:#5a88aa; }
+.tile-block pre { margin:0; }
+button#clear-selected-tiles { background:#244f78; }
+button#clear-selected-tiles:hover { background:#1c3c5a; }
+
 .control {
     margin: 10px 0;
 }

@@ -288,6 +288,48 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         } catch(_) {}
         // Parse into tile placements
         const tiles = meshUtil.parseVoxelGridToTiles(grid);
+
+        // Build per-tile ascii mini blocks (3x3x3) for selection browsing
+        try {
+          const browser = document.getElementById('tile-block-browser');
+          if (browser){
+            browser.innerHTML='';
+            // Each tile placement has position (z,y,x) in tiles
+            for (const t of tiles){
+              const pIndex = t.prototypeIndex;
+              const proto = tilePrototypes[pIndex];
+              const vox = meshUtil.rotateY(proto.voxels, t.rotationY);
+              let block = '';
+              for (let yy=0; yy<3; yy++){
+                block += `y=${yy}\n`;
+                for (let zz=0; zz<3; zz++){
+                  let row='';
+                  for (let xx=0; xx<3; xx++){
+                    const v = vox[zz][yy][xx];
+                    row += (v===0?'.':(v===2?'^':'#'));
+                  }
+                  block += row + '\n';
+                }
+                block += '\n';
+              }
+              const div = document.createElement('div');
+              div.className='tile-block';
+              div.dataset.selected='false';
+              div.dataset.prototype = pIndex;
+              div.dataset.rotation = t.rotationY;
+              div.dataset.tx = t.position[2]; // original mapping x<-tileX,z<-tileZ,y<-tileY
+              div.dataset.ty = t.position[1];
+              div.dataset.tz = t.position[0];
+              const pre = document.createElement('pre'); pre.textContent = block.trim();
+              const coord = document.createElement('div'); coord.className='coord'; coord.textContent=`${t.position[2]},${t.position[1]},${t.position[0]}`;
+              div.appendChild(coord); div.appendChild(pre);
+              browser.appendChild(div);
+            }
+          }
+        } catch(e){ console.warn('tile block browser build failed', e); }
+
+        // Mini viewer selection handling
+        setupMiniViewer(tiles, meshUtil, THREERef);
         // Build group
   const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
   const group = new THREERef.Group();
@@ -299,6 +341,65 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
   updateDungeonMesh(group);
       } catch(e){ console.error('WFC generation failed', e); }
     };
+  }
+  function setupMiniViewer(tiles, meshUtil, THREERef){
+    const miniContainer = document.getElementById('mini-viewer');
+    const browser = document.getElementById('tile-block-browser');
+    if (!miniContainer || !browser) return;
+    // Initialize mini renderer lazily
+    if (!miniContainer._mini){
+      const renderer = new THREERef.WebGLRenderer({antialias:true});
+      renderer.setSize(miniContainer.clientWidth, miniContainer.clientHeight);
+      miniContainer.appendChild(renderer.domElement);
+      const scene = new THREERef.Scene();
+      const camera = new THREERef.PerspectiveCamera(60, miniContainer.clientWidth/miniContainer.clientHeight, 0.1, 500);
+      camera.position.set(25,25,25); camera.lookAt(0,0,0);
+      const amb = new THREERef.AmbientLight(0xffffff,0.6); scene.add(amb);
+      const dir = new THREERef.DirectionalLight(0xffffff,0.8); dir.position.set(30,50,20); scene.add(dir);
+      const grid = new THREERef.GridHelper(120, 24, 0x335577, 0x223344); scene.add(grid);
+      miniContainer._mini = { renderer, scene, camera, selection:[] };
+      function animateMini(){ requestAnimationFrame(animateMini); renderer.render(scene,camera); }
+      animateMini();
+      window.addEventListener('resize', ()=>{
+        const w = miniContainer.clientWidth, h = miniContainer.clientHeight;
+        renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
+      });
+      const clearBtn = document.getElementById('clear-selected-tiles');
+      if (clearBtn){ clearBtn.onclick = ()=>{ miniContainer._mini.selection=[]; rebuildMiniScene(); [...browser.querySelectorAll('.tile-block')].forEach(b=>b.dataset.selected='false'); }; }
+    }
+    function rebuildMiniScene(){
+      const { scene } = miniContainer._mini; // remove previous non-lights/grid
+      for (let i=scene.children.length-1;i>=0;i--){ const c=scene.children[i]; if (!c.isLight && !(c.geometry&&c.geometry.type==='GridHelper')) scene.remove(c); }
+      // Build grouped mesh for each selected tile relative to first selection as origin
+      const sel = miniContainer._mini.selection;
+      if (!sel.length) return;
+      const origin = sel[0];
+      sel.forEach(s => {
+        const gm = meshUtil.buildTileMesh({THREE:THREERef, prototypeIndex:s.prototypeIndex, rotationY:s.rotationY, unit:3});
+        const ox = (s.tx - origin.tx) * 3;
+        const oy = (s.ty - origin.ty) * 3;
+        const oz = (s.tz - origin.tz) * 3;
+        gm.position.set(ox, oy, oz);
+        scene.add(gm);
+      });
+    }
+    browser.onclick = function(e){
+      const block = e.target.closest('.tile-block');
+      if (!block) return;
+      const selected = block.dataset.selected==='true';
+      block.dataset.selected = selected? 'false':'true';
+      const { selection } = miniContainer._mini;
+      if (!selected){
+        selection.push({
+          prototypeIndex: Number(block.dataset.prototype), rotationY:Number(block.dataset.rotation), tx:Number(block.dataset.tx), ty:Number(block.dataset.ty), tz:Number(block.dataset.tz)
+        });
+      } else {
+        const idx = selection.findIndex(s=> s.tx==block.dataset.tx && s.ty==block.dataset.ty && s.tz==block.dataset.tz);
+        if (idx>-1) selection.splice(idx,1);
+      }
+      rebuildMiniScene();
+    };
+    rebuildMiniScene();
   }
 
   lastInstance = instance;
