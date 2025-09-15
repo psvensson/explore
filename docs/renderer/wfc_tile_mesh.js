@@ -399,17 +399,38 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     }
   }
 
-  // Detect any floor / ceiling occupancy to create a single large plate each.
-  let hasFloor=false, hasCeiling=false;
-  for (let z=0; z<3; z++) for (let x=0; x<3; x++){ if (vox[z][0][x]>0) hasFloor=true; if (vox[z][2][x]>0) hasCeiling=true; }
+  // Detect any floor / ceiling occupancy & holes (portal stair variants)
+  let hasFloor=false, hasCeiling=false, hasFloorHole=false, hasCeilingHole=false;
+  for (let z=0; z<3; z++) for (let x=0; x<3; x++){
+    const fv = vox[z][0][x]; const cv = vox[z][2][x];
+    if (fv>0) hasFloor=true; else hasFloorHole=true;
+    if (cv>0) hasCeiling=true; else hasCeilingHole=true;
+  }
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
   if (v>0){
   // Do not skip mid layer when stairs present; we now combine walls with voxel ramps
       let material = (v===2 ? stairMat : midMat);
       let geomKind='mid';
-      if (y===0){ if (!(x===0 && z===0)) { if (hasFloor) continue; } material = floorMat; geomKind= hasFloor ? 'floor_full':'floor'; }
-      else if (y===2){ if (!(x===0 && z===0)) { if (hasCeiling) continue; } material = ceilingMat; geomKind= hasCeiling ? 'ceiling_full':'ceiling'; }
+      if (y===0){
+        // If floor has any hole, emit per-cell thin slab for occupied cells only
+        if (hasFloor && !hasFloorHole){ // normal unified plate
+          if (!(x===0 && z===0)) { continue; }
+          material = floorMat; geomKind='floor_full';
+        } else {
+          if (v===0) continue; // skip hole cell
+          material = floorMat; geomKind='floor';
+        }
+      }
+      else if (y===2){
+        if (hasCeiling && !hasCeilingHole){
+          if (!(x===0 && z===0)) { continue; }
+          material = ceilingMat; geomKind='ceiling_full';
+        } else {
+          if (v===0) continue;
+          material = ceilingMat; geomKind='ceiling';
+        }
+      }
       else if (y===1){
         // Treat mid layer (including 'stair' voxels) as wall plates per orientation
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);

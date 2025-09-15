@@ -211,8 +211,43 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         initializeTileset();
         const n = tilePrototypes.length;
         const weights = new Array(n).fill(1);
+        // Build metadata for vertical compatibility
+        function protoMeta(p){
+          const vox = p.voxels; // [z][y][x]
+          const floor = []; const ceiling=[]; const mid=[];
+          let hasHoleFloor=false, hasHoleCeiling=false, hasStair=false;
+          for (let z=0;z<3;z++){
+            const fRow=vox[z][0].slice(); floor.push(fRow);
+            const mRow=vox[z][1].slice(); mid.push(mRow);
+            const cRow=vox[z][2].slice(); ceiling.push(cRow);
+            if (fRow.some(v=>v===0)) hasHoleFloor=true;
+            if (cRow.some(v=>v===0)) hasHoleCeiling=true;
+            if (mRow.some(v=>v===2) || fRow.some(v=>v===2) || cRow.some(v=>v===2)) hasStair=true;
+          }
+          return { floor, ceiling, mid, hasHoleFloor, hasHoleCeiling, hasStair };
+        }
+        const metas = tilePrototypes.map(protoMeta);
+        function canStack(upper, lower){
+          const up=metas[upper], lo=metas[lower];
+            for (let z=0;z<3;z++) for (let x=0;x<3;x++){
+              const cf = lo.ceiling[z][x];
+              const uf = up.floor[z][x];
+              if (cf!==uf){
+                // allow only if both are holes (0) and both tiles are stair types
+                if (!(cf===0 && uf===0 && lo.hasHoleCeiling && up.hasHoleFloor)) return false;
+              }
+            }
+          // ensure hole pairing symmetry (avoid lone hole below solid or vice versa)
+          if (lo.hasHoleCeiling !== up.hasHoleFloor) return false;
+          return true;
+        }
         const rules = [];
-        for (let a=0;a<n;a++) for (let b=0;b<n;b++){ rules.push(['x',a,b]); rules.push(['y',a,b]); rules.push(['z',a,b]); }
+        for (let a=0;a<n;a++) for (let b=0;b<n;b++){
+          // x & z remain fully permissive for now
+          rules.push(['x',a,b]);
+          rules.push(['z',a,b]);
+          if (canStack(b,a)) rules.push(['y',a,b]); // place b above a if stacking valid
+        }
         const WFC = WFCMod.default || WFCMod.WFC || WFCMod;
         const wf = new WFC({ nd:3, weights, rules });
         wf.expand([0,0,0],[vy,vx,vz]); // note ordering per original WFC code (y,x,z)

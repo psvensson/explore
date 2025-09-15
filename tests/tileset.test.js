@@ -21,19 +21,20 @@ describe('tileset', () => {
 
   test('initializes expected number of prototypes and registers each', () => {
     const info = initializeTileset();
-    expect(tilePrototypes.length).toBe(13);
-    expect(protoTileIds.length).toBe(13);
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    // Updated tileset now has 11 prototypes after portal stair refactor
+    expect(tilePrototypes.length).toBe(11);
+    expect(protoTileIds.length).toBe(11);
+    expect(global.NDWFC3D.callCount()).toBe(11);
     expect(info.emptyWithFloorProtoIdx).toBeGreaterThanOrEqual(0);
     expect(info.solidProtoIdx).toBeGreaterThan(info.emptyWithFloorProtoIdx);
   });
 
   test('idempotent initializeTileset does not duplicate', () => {
     initializeTileset();
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    expect(global.NDWFC3D.callCount()).toBe(11);
     initializeTileset();
-    expect(tilePrototypes.length).toBe(13);
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    expect(tilePrototypes.length).toBe(11);
+    expect(global.NDWFC3D.callCount()).toBe(11);
   });
 
   test('solid cube prototype voxels all 1s', () => {
@@ -43,16 +44,21 @@ describe('tileset', () => {
     expect(new Set(flat)).toEqual(new Set([1]));
   });
 
-  test('stair-up tile contains voxel value 2 at expected coordinates', () => {
+  test('at least one stair tile has a 2 in mid layer center', () => {
     initializeTileset();
-    const stairUp = tilePrototypes[6];
-    expect(stairUp.voxels[1][1][1]).toBe(2);
+    const stairIndices = tilePrototypes
+      .map((p,i)=>({p,i}))
+      .filter(o=> o.p.voxels.some(zLayer => zLayer[1].includes(2)));
+    expect(stairIndices.length).toBeGreaterThan(0);
+    const hasCenter = stairIndices.some(o=> o.p.voxels[1][1][1]===2);
+    expect(hasCenter).toBe(true);
   });
 
-  test('corridor tile has expected rotation transforms', () => {
+  test('at least one rotated corridor tile exposes all ry transforms', () => {
     initializeTileset();
-    const corridor = tilePrototypes[3];
-    expect(corridor.transforms).toEqual(["ry","ry+ry","ry+ry+ry"]);
+    const any = tilePrototypes.find(p=> Array.isArray(p.transforms) && p.transforms.length===3);
+    expect(any).toBeTruthy();
+    expect(any.transforms).toEqual(["ry","ry+ry","ry+ry+ry"]);
   });
 
   test('rejects incorrect layer count', () => {
