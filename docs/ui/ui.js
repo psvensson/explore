@@ -6,14 +6,12 @@ export function initUI(rootId = 'control-panel') {
   controlPanel.innerHTML = '';
   const log = [];
   function logAction(msg){ log.push(msg); }
-  // Classic generator button
-  const generateDungeonButton = document.createElement('button');
-  generateDungeonButton.innerText = 'Generate Dungeon';
-  generateDungeonButton.addEventListener('click', () => {
-    logAction('generate');
-    if (window.generateDungeon) window.generateDungeon();
-  });
-  controlPanel.appendChild(generateDungeonButton);
+  // Title label
+  const title = document.createElement('div');
+  title.textContent = 'Dungeon Generation';
+  title.style.fontWeight='600';
+  title.style.marginBottom='4px';
+  controlPanel.appendChild(title);
 
   // WFC size controls
   const sizeWrap = document.createElement('div');
@@ -25,7 +23,7 @@ export function initUI(rootId = 'control-panel') {
   controlPanel.appendChild(sizeWrap);
 
   const generateWFCButton = document.createElement('button');
-  generateWFCButton.innerText = 'Generate WFC Dungeon';
+  generateWFCButton.innerText = 'Generate';
   generateWFCButton.style.marginTop='6px';
   generateWFCButton.addEventListener('click', () => {
     const sx = parseInt(document.getElementById('wfc-size-x').value,10);

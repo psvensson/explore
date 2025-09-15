@@ -2,7 +2,8 @@ body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f0f0f0;
+    background-color: #0b1522;
+    color: #cfe6ff;
 }
 
 header {
@@ -19,32 +20,29 @@ header {
     padding: 20px;
 }
 
-.controls {
-    background-color: white;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    padding: 15px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
+section#ui-controls, section#renderer, section#ascii-map-section {
+        background:#0f2740;
+        border:1px solid #1b4469;
+        border-radius:8px;
+        padding:14px 18px 18px;
+        margin:16px auto;
+        max-width:1100px;
+        box-shadow:0 2px 6px rgba(0,0,0,0.35);
 }
+section#ui-controls h2, section#renderer h2, section#ascii-map-section h2 { margin-top:0; font-weight:600; letter-spacing:0.5px; }
+
+#control-panel input[type=number]{
+    background:#0b1522; border:1px solid #1b4469; color:#cfe6ff; padding:4px 6px; border-radius:4px; font-size:13px;
+}
+#control-panel label { margin-right:12px; font-size:13px; }
+#control-panel button { width:100%; }
 
 .control {
     margin: 10px 0;
 }
 
-button {
-    background-color: #1f4d78; /* primary button blue */
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.18s ease;
-}
-
-button:hover {
-    background-color: #163852; /* darker on hover */
-}
+button { background-color:#1f4d78; color:#fff; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-weight:600; letter-spacing:0.4px; }
+button:hover { background-color:#163852; }
 
 .canvas-container {
     width: 100%;

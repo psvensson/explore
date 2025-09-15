@@ -23,21 +23,19 @@ export function initializeTileset(){
 	// Tapered corner style corridor; maintain solid floor & ceiling
 	addTileFromLayers([["111","111","111"],["111","100","111"],["111","000","111"]],0,{transforms:["ry","ry+ry","ry+ry+ry"]});
 
-	// New portal-style stair pair (lower -> upper). Each has full floor & ceiling except a single aligned hole.
-	// Lower stair: central ramp voxel at mid layer, ceiling hole at (x=1,z=1) (y=2 row of middle z layer)
-	// Layers format: [z0, z1, z2]; each z layer has rows y0,y1,y2.
-	// Lower: ramp rises to hole in ceiling.
+	// Refactored portal-style stair pair (lower -> upper) with full headroom.
+	// Lower stair: solid floor (y=0) across tile, fully open ceiling (y=2 = 000) for unobstructed ascent.
 	addTileFromLayers([
-		["111","000","111"], // z=0
-		["111","020","101"], // z=1 (ceiling row y2 has hole '101')
-		["111","000","111"]  // z=2
+		["111","000","000"], // z=0 (floor solid, mid empty, ceiling open)
+		["111","020","000"], // z=1 (central stair voxel '2', open ceiling above)
+		["111","000","000"]  // z=2
 	],31,{transforms:["ry","ry+ry","ry+ry+ry"]});
 
-	// Upper stair: floor hole aligned with lower ceiling hole; landing mid layer fully open.
+	// Upper stair: fully open floor (y=0 = 000) to receive ascent, solid ceiling (y=2) to preserve level separation.
 	addTileFromLayers([
-		["111","000","111"], // z=0
-		["101","000","111"], // z=1 (floor row y0 has hole '101')
-		["111","000","111"]  // z=2
+		["000","000","111"], // z=0 (open floor below, solid ceiling row)
+		["000","020","111"], // z=1 (central stair voxel continuing path)
+		["000","000","111"]  // z=2
 	],32,{transforms:["ry","ry+ry","ry+ry+ry"]});
 
 	// Other structural variants (kept)

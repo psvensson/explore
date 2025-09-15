@@ -10,6 +10,6 @@ describe('ui', () => {
     const { log } = initUI();
     const btn = document.querySelector('button');
     btn.click();
-    expect(log).toContain('generate');
+  expect(log.some(entry => entry.startsWith('generate-wfc-'))).toBe(true);
   });
 });

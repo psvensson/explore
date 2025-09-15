@@ -225,32 +225,30 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         const weights = new Array(n).fill(1);
         // Build metadata for vertical compatibility
         function protoMeta(p){
-          const vox = p.voxels; // [z][y][x]
-          const floor = []; const ceiling=[]; const mid=[];
-          let hasHoleFloor=false, hasHoleCeiling=false, hasStair=false;
+          const vox = p.voxels;
+          const floor=[]; const ceiling=[]; const mid=[];
+          let isStair=false;
           for (let z=0;z<3;z++){
-            const fRow=vox[z][0].slice(); floor.push(fRow);
-            const mRow=vox[z][1].slice(); mid.push(mRow);
-            const cRow=vox[z][2].slice(); ceiling.push(cRow);
-            if (fRow.some(v=>v===0)) hasHoleFloor=true;
-            if (cRow.some(v=>v===0)) hasHoleCeiling=true;
-            if (mRow.some(v=>v===2) || fRow.some(v=>v===2) || cRow.some(v=>v===2)) hasStair=true;
+            floor.push(vox[z][0].slice());
+            mid.push(vox[z][1].slice());
+            ceiling.push(vox[z][2].slice());
+            if (vox[z][0].some(v=>v===2) || vox[z][1].some(v=>v===2) || vox[z][2].some(v=>v===2)) isStair=true;
           }
-          return { floor, ceiling, mid, hasHoleFloor, hasHoleCeiling, hasStair };
+          return { floor, mid, ceiling, isStair };
         }
         const metas = tilePrototypes.map(protoMeta);
         function canStack(upper, lower){
-          const up=metas[upper], lo=metas[lower];
-            for (let z=0;z<3;z++) for (let x=0;x<3;x++){
-              const cf = lo.ceiling[z][x];
-              const uf = up.floor[z][x];
-              if (cf!==uf){
-                // allow only if both are holes (0) and both tiles are stair types
-                if (!(cf===0 && uf===0 && lo.hasHoleCeiling && up.hasHoleFloor)) return false;
-              }
-            }
-          // ensure hole pairing symmetry (avoid lone hole below solid or vice versa)
-          if (lo.hasHoleCeiling !== up.hasHoleFloor) return false;
+          const upperProto = tilePrototypes[upper];
+          const lowerProto = tilePrototypes[lower];
+          // Lower stair (31) must be directly below upper stair (32) or any non-stair solid ceiling tile can sit over non-stair floor.
+          if (lowerProto.tileId===31) {
+            return upperProto.tileId===32; // enforce explicit pairing
+          }
+          if (upperProto.tileId===32) {
+            // Only allow upper stair above a lower stair
+            return lowerProto.tileId===31;
+          }
+          // Non-stair tiles: simple (always) vertical compatibility (floor/ceiling now ignored for headroom model)
           return true;
         }
         // Axis token mapping in underlying WFC: dim0->'y', dim1->'x', dim2->'z'
