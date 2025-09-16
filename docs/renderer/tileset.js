@@ -153,45 +153,27 @@ export function initializeTileset() {
       "111"]
   ], 0, { transforms: ["ry","ry+ry","ry+ry+ry"] });
 
-  // Lower Stair tile (Y rotations only, stair-up)
-  // Added richer metadata: axis (primary climb axis before rotation), dir (positive direction),
-  // requiredAboveEmpty: list of [z,y,x] coords in the ABOVE tile that must be empty when this tile is below.
+  // Directional stair tiles (no rotations; explicit variants for +/- along each axis)
   addTileFromLayers([
-    [ "111",
-      "111",
-      "111"], // z=0
-    [ "000",
-      "020",
-      "111"], // z=1
-    [ "000",
-      "000",
-      "020"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"], meta: {
-    role: 'stair',
-    stairRole: 'lower',
-    axis: 'z',
-    dir: 1,
-    // Player head clearance in tile above: demand central middle-layer cell above is empty
-    requiredAboveEmpty: [ [1,1,1] ] // [z,y,x] in the upper tile's local voxel space
-  } });
-
-   // Upper Stair tile (Y rotations only, stair-down)
+    ["111","111","111"],
+    ["111","020","010"],
+    ["111","000","000"]
+  ],31,{ transforms:[], meta:{ role:'stair', axis:'z', dir:1 }});
   addTileFromLayers([
-    [ "020",
-      "111",
-      "111"], // z=0
-    [ "000",
-      "000",
-      "000"], // z=1
-    [ "111",
-      "111",
-      "111"]  // z=2
-  ], 2, { transforms: ["ry","ry+ry","ry+ry+ry"], meta: {
-    role: 'stair',
-    stairRole: 'upper',
-    axis: 'z',
-    dir: 1
-  } });
+    ["111","000","000"],
+    ["111","020","010"],
+    ["111","111","111"]
+  ],32,{ transforms:[], meta:{ role:'stair', axis:'z', dir:-1 }});
+  addTileFromLayers([
+    ["111","101","111"],
+    ["111","020","000"],
+    ["111","000","000"]
+  ],33,{ transforms:[], meta:{ role:'stair', axis:'x', dir:1 }});
+  addTileFromLayers([
+    ["111","000","000"],
+    ["111","020","000"],
+    ["111","101","111"]
+  ],34,{ transforms:[], meta:{ role:'stair', axis:'x', dir:-1 }});
 
 
   // Dead-end corridor (Y rotations only)
@@ -232,6 +214,13 @@ export function initializeTileset() {
       "111",
       "111"]
   ], 0, { transforms: [] });
+
+  // Open landing tile (tileId 50) for stair forward clear volume: solid floor (y=0), empty mid (y=1), open top (y=2)
+  addTileFromLayers([
+    ["111","000","000"],
+    ["111","000","000"],
+    ["111","000","000"],
+  ],50,{ transforms:["ry","ry+ry","ry+ry+ry"] });
 
   return { emptyWithFloorProtoIdx, solidProtoIdx };
 }

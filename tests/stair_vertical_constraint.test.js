@@ -20,29 +20,59 @@ describe('Stair vertical-only constraint (Strategy A)', ()=>{
   beforeAll(()=>{ initializeTileset(); });
 
   test('no stair tile appears without its counterpart directly stacked', ()=>{
-    // Build rules the same way renderer does (simplified) to isolate vertical relationships
+    // Build rules using metadata-driven approach (preferred) with heuristic fallback
     const n = tilePrototypes.length;
     const weights = new Array(n).fill(1);
     const rules=[];
-    function stairHeuristic(p){ return {kind: classifyStair(p)}; }
+    
     function canStack(upper, lower){
       const up = tilePrototypes[upper];
       const low = tilePrototypes[lower];
-      const isUp = stairHeuristic(up).kind==='upper';
-      const isLow= stairHeuristic(low).kind==='lower';
-      if (isLow) return isUp; if (isUp) return isLow; return true;
+      
+      // Prefer explicit metadata
+      const lowerRole = low.meta && low.meta.stairRole;
+      const upperRole = up.meta && up.meta.stairRole;
+      
+      if (lowerRole === 'lower') {
+        if (upperRole !== 'upper') return false;
+        // Check clearance if defined
+        if (low.meta && low.meta.requiredAboveEmpty) {
+          for (const [z,y,x] of low.meta.requiredAboveEmpty) {
+            if (up.voxels[z] && up.voxels[z][y] && up.voxels[z][y][x] !== 0) {
+              return false;
+            }
+          }
+        }
+        return true;
+      }
+      if (upperRole === 'upper') return (lowerRole === 'lower');
+      
+      // Fallback to heuristic for legacy compatibility
+      const isUp = classifyStair(up)==='upper';
+      const isLow = classifyStair(low)==='lower';
+      if (isLow) return isUp; 
+      if (isUp) return isLow; 
+      return true;
     }
+    
     for (let a=0;a<n;a++) for (let b=0;b<n;b++){
-      rules.push(['y',a,b]); rules.push(['z',a,b]); if (canStack(b,a)) rules.push(['x',a,b]);
+      rules.push(['y',a,b]); rules.push(['z',a,b]); 
+      if (canStack(b,a)) rules.push(['x',a,b]);
     }
-    // Extract just vertical rules
+    
+    // Extract just vertical rules and verify stair pairing
     const vertical = rules.filter(r=>r[0]==='x');
     for (const r of vertical){
       const below = r[1]; const above = r[2];
-      const kBelow = classifyStair(tilePrototypes[below]);
-      const kAbove = classifyStair(tilePrototypes[above]);
-      if (kBelow==='lower') expect(kAbove).toBe('upper');
-      if (kAbove==='upper') expect(kBelow).toBe('lower');
+      const belowProto = tilePrototypes[below];
+      const aboveProto = tilePrototypes[above];
+      
+      // Use metadata if available, fallback to heuristic
+      const belowRole = belowProto.meta?.stairRole || (classifyStair(belowProto)==='lower' ? 'lower' : null);
+      const aboveRole = aboveProto.meta?.stairRole || (classifyStair(aboveProto)==='upper' ? 'upper' : null);
+      
+      if (belowRole==='lower') expect(aboveRole).toBe('upper');
+      if (aboveRole==='upper') expect(belowRole).toBe('lower');
     }
   });
 });

@@ -106,8 +106,61 @@ export function parseVoxelGridToTiles(grid){
   return tiles;
 }
 
+// Helper functions for simplified stair detection
+function hasStairVoxel(vox) {
+  // Check if any voxel has value 2 (stair marker)
+  for (let z = 0; z < 3; z++) {
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        if (vox[z][y][x] === 2) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function detectStairDirection(vox) {
+  // Find the center stair voxel and determine travel direction
+  // by checking for solid backing along one axis
+  const stairVoxels = [];
+  for (let z = 0; z < 3; z++) {
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        if (vox[z][y][x] === 2) stairVoxels.push({x, y, z});
+      }
+    }
+  }
+  
+  if (stairVoxels.length === 0) return null;
+  
+  // Use center stair voxel or first one found
+  const center = stairVoxels.find(v => v.x === 1 && v.y === 1 && v.z === 1) || stairVoxels[0];
+  
+  // Count solid voxels along each axis to determine travel direction
+  let countXP = 0, countXN = 0, countZP = 0, countZN = 0;
+  for (let y = 0; y < 3; y++) {
+    if (center.x < 2 && vox[center.z][y][center.x + 1] > 0) countXP++;
+    if (center.x > 0 && vox[center.z][y][center.x - 1] > 0) countXN++;
+    if (center.z < 2 && vox[center.z + 1] && vox[center.z + 1][y][center.x] > 0) countZP++;
+    if (center.z > 0 && vox[center.z - 1] && vox[center.z - 1][y][center.x] > 0) countZN++;
+  }
+  
+  const xSpan = countXP + countXN;
+  const zSpan = countZP + countZN;
+  
+  let axis = (zSpan >= xSpan) ? 'z' : 'x';
+  let dir = 1;
+  if (axis === 'z') {
+    dir = (countZP >= countZN) ? +1 : -1;
+  } else {
+    dir = (countXP >= countXN) ? +1 : -1;
+  }
+  
+  return { axis, dir };
+}
+
 // Build Three.js mesh (Group) for a given detected tile (using underlying prototype voxels before rotation).
-export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
+export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasStairBelow=false, hasStairAbove=false}={}){
   if (!THREE) throw new Error('THREE dependency missing');
   const proto = tilePrototypes[prototypeIndex];
   if (!proto) throw new Error('Invalid prototype index');
@@ -304,7 +357,12 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
     // In test (jsdom) environment Canvas 2D may be unimplemented; fail soft returning null
     try {
       if (!THREE.CanvasTexture || !globalThis.document) return null;
-      const size=32; const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext && c.getContext('2d');
+      // Detect JSDOM environment and skip canvas operations to avoid console errors
+      if (globalThis.navigator?.userAgent?.includes('jsdom')) return null;
+      const size=32; const c=document.createElement('canvas'); c.width=c.height=size; 
+      // Additional check to avoid JSDOM canvas issues
+      if (!c.getContext) return null;
+      const ctx=c.getContext('2d');
       if (!ctx || !ctx.createImageData) return null;
       const r=(color>>16)&255,g=(color>>8)&255,b=color&255; const img=ctx.createImageData(size,size);
       for (let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255; }
@@ -323,71 +381,49 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   const midMat     = mat('mid',     0x555555,'mid');
   const ceilingMat = mat('ceiling', 0x888888,'ceiling');
   const stairMat   = mat('stair',   0x777777,'stair');
-  // Slightly brighter/emissive-like color cue for portal stairs (cached separately)
-  const portalStairMat = mat('portalStair', 0x8a8899, 'portal-stair');
 
-  function classifyStairVariant(vox3){
-    // vox3[z][y][x], we inspect middle layer y=1 edges for platform (111)
-    const y = 1;
-    const rowStr = (z) => vox3[z][y].map(n => n>0? '1':'0').join('');
-    const colStr = (x) => [vox3[0][y][x], vox3[1][y][x], vox3[2][y][x]].map(n=> n>0? '1':'0').join('');
-    const front = rowStr(0), back = rowStr(2);
-    const left = colStr(0), right = colStr(2);
-    if (back === '111')  return { kind:'lower', axis:'z', dir:+1 };
-    if (front === '111') return { kind:'upper', axis:'z', dir:-1 };
-    if (right === '111') return { kind:'lower', axis:'x', dir:+1 };
-    if (left === '111')  return { kind:'upper', axis:'x', dir:-1 };
-    return null;
+  // Check if this tile has stairs using simple voxel detection
+  const hasStairs = hasStairVoxel(vox);
+  // Prefer prototype metadata if provided for axis/dir to avoid heuristic mistakes
+  let stairDirection = null;
+  if (hasStairs){
+    if (proto.meta && proto.meta.role==='stair' && proto.meta.axis && proto.meta.dir){
+      stairDirection = { axis: proto.meta.axis, dir: proto.meta.dir };
+    } else {
+      stairDirection = detectStairDirection(vox);
+    }
   }
 
-  // Build a central ramp (snug to floor, rising to half tile height) and a back-row platform
-  // --- New stacked stair rendering (three discrete steps) ---
-  const stairVoxels = [];
-  for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++) if (vox[z][y][x]===2) stairVoxels.push({x,y,z});
-  let stairAxis=null, stairDir=+1, isPortal=false, isLower=false, isUpper=false;
-  if (stairVoxels.length){
-    const protoId = proto.tileId;
-    if (protoId===31 || protoId===32){ isPortal=true; isLower=protoId===31; isUpper=protoId===32; }
-    // Axis & direction using classify then fallback heuristic
-    function inferAxisDir(){
-      const center = stairVoxels.find(v=>v.x===1 && v.y===1 && v.z===1) || stairVoxels[0];
-      // Check surrounding solid mid voxels to guess direction
-      let countXP=0,countXN=0,countZP=0,countZN=0;
-      for (let y=0;y<3;y++){
-        if (center.x<2 && vox[center.z][y][center.x+1]>0) countXP++; if (center.x>0 && vox[center.z][y][center.x-1]>0) countXN++;
-        if (center.z<2 && vox[center.z+1] && vox[center.z+1][y][center.x]>0) countZP++; if (center.z>0 && vox[center.z-1] && vox[center.z-1][y][center.x]>0) countZN++;
-      }
-      const xSpan = countXP+countXN, zSpan=countZP+countZN;
-      let axis = (zSpan>=xSpan)?'z':'x';
-      let dir = 1;
-      if (axis==='z') dir = (countZP>=countZN)? +1 : -1; else dir = (countXP>=countXN)? +1 : -1;
-      return {axis, dir};
-    }
-    const classified = classifyStairVariant(vox) || inferAxisDir();
-    stairAxis = classified.axis; stairDir = classified.dir;
-    // Create 3 steps: each 1/3 height, increasing along travel axis
-    const full = unit/3; const stepHeight = unit/3; const treadDepth = unit/3; const thin = full*0.1;
+  // Render stair steps if stairs are present
+  if (hasStairs && stairDirection) {
+    const { axis, dir } = stairDirection;
+    const full = unit/3;
+    const stepHeight = unit/3;
+    const treadDepth = unit/3;
     const StepGeom = THREE.BoxGeometry||function(){};
-    for (let i=0;i<3;i++){
+    
+    for (let i = 0; i < 3; i++) {
       const geom = new StepGeom(
-        stairAxis==='x'? treadDepth : unit/3, // width along x
-        stepHeight,                            // height
-        stairAxis==='z'? treadDepth : unit/3   // width along z
+        axis === 'x' ? treadDepth : unit/3, // width along x
+        stepHeight,                         // height
+        axis === 'z' ? treadDepth : unit/3  // width along z
       );
       const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, stairMat);
-      if (mesh.position && mesh.position.set){
-        // position baseline
+      if (mesh.position && mesh.position.set) {
+        // Position baseline
         let xPos = unit/2, zPos = unit/2;
-        // offset along axis from start
+        
+        // Offset along axis from start
         const offset = (i + 0.5) * treadDepth; // center each step segment
-        if (stairAxis==='z'){
-          const startZ = (stairDir>0)? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
-          zPos = startZ + (stairDir>0? offset : -offset);
+        if (axis === 'z') {
+          const startZ = (dir > 0) ? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
+          zPos = startZ + (dir > 0 ? offset : -offset);
         } else {
-          const startX = (stairDir>0)? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
-          xPos = startX + (stairDir>0? offset : -offset);
+          const startX = (dir > 0) ? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
+          xPos = startX + (dir > 0 ? offset : -offset);
         }
-        const yPos = thin + (i+0.5)*stepHeight; // stack steps upward from floor top
+        
+        const yPos = full*0.1 + (i+0.5)*stepHeight; // stack steps upward from floor top
         mesh.position.set(xPos, yPos, zPos);
       }
       group.add(mesh);
@@ -400,21 +436,28 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
   //  - A layer of all 1s visually appears solid (because 9 slabs tile the area)
   //  - Any holes remain open naturally
   //  - A completely empty top or bottom layer produces no geometry at all
-  // Portal stair openness logic (skip floor for upper / ceiling for lower) is
-  // still applied independently below.
+  // Simplified stair logic: any tile with stair voxels (value 2) gets special treatment
   for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
     const v = vox[z][y][x];
-  if (v>0){
-  // Do not skip mid layer when stairs present; we now combine walls with voxel ramps
-  let material = (v===2 ? (isPortal ? portalStairMat : stairMat) : midMat);
+    if (v>0){
+      let material = (v===2 ? stairMat : midMat);
       let geomKind='mid';
-      // Portal stair openness adjustments:
-      // Lower portal (tileId 31) should NOT render a blocking ceiling; Upper portal (tileId 32)
-      // should NOT render a blocking floor so the pair visually connects.
-      if (isPortal){
-        if (isLower && y===2) { continue; } // remove ceiling plate parts
-        if (isUpper && y===0) { continue; } // remove floor plate parts
+      
+      // Stair tiles now have solid floors; only suppress ceilings to keep vertical passage open
+      if (hasStairs && y === 2) {
+        continue; // No ceiling on stair tiles - allows vertical traversal
       }
+      
+      // Neighbor-aware floor/ceiling: if this tile is above a stair, don't render floor
+      if (hasStairBelow && y === 0) {
+        continue; // No floor when there are stairs below - allows stair access from below
+      }
+      
+      // If this tile is below a stair, don't render ceiling  
+      if (hasStairAbove && y === 2) {
+        continue; // No ceiling when there are stairs above - allows stair access from above
+      }
+      
       if (y===0){
         material = floorMat; geomKind='floor';
       }
@@ -422,21 +465,23 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1}){
         material = ceilingMat; geomKind='ceiling';
       }
       else if (y===1){
-        // For portal stair tiles, suppress all mid-layer solid fill voxels (keep only step meshes added earlier)
-        if (isPortal && v===1){ continue; }
+        // Suppress central mid pillar when stairs present
+        if (hasStairs && x===1 && z===1){
+          continue;
+        }
         // Treat mid layer (including 'stair' voxels) as wall plates per orientation
         const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
         const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
-        if (stairVoxels.length && x===1 && z===1){
-          // Suppress central mid pillar when stairs present
-          continue;
-        }
+        
         if (hasX && !hasZ) geomKind='wall_xMajor';
         else if (hasZ && !hasX) geomKind='wall_zMajor';
         else if (hasX && hasZ) geomKind='wall_both';
         else geomKind='wall_both';
-        // Additional openness: remove lateral wall plates for portal stair tiles entirely
-        if (isPortal && (geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both')){ continue; }
+        
+        // Remove lateral wall plates for stair tiles to keep them open
+        if (hasStairs && (geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both')){
+          continue;
+        }
       }
       // Decide per-axis emission to avoid duplicates and ensure boundary coverage
       let emitX = false, emitZ = false;

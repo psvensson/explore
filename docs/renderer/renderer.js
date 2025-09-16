@@ -291,11 +291,64 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
         // Axis token mapping in underlying WFC: dim0->'y', dim1->'x', dim2->'z'
         // We want: horizontal X adjacency -> dim0 token 'y'; vertical Y adjacency -> dim1 token 'x'; horizontal Z adjacency -> dim2 token 'z'.
         const rules = [];
+        // Build horizontal rules with stair forward openness constraint.
+        // We model a stair's forward direction so that the neighbor tile in that direction
+        // must have an empty middle forward-facing cell (simple heuristic: the center column in the touching face).
+        function middleFaceOpen(proto, face){
+          const v = proto.voxels;
+          if (face==='posZ') { return v[2][1][0]===0 && v[2][1][1]===0 && v[2][1][2]===0; }
+          if (face==='negZ') { return v[0][1][0]===0 && v[0][1][1]===0 && v[0][1][2]===0; }
+          if (face==='posX') { return v[0][1][2]===0 && v[1][1][2]===0 && v[2][1][2]===0; }
+          if (face==='negX') { return v[0][1][0]===0 && v[1][1][0]===0 && v[2][1][0]===0; }
+          return true;
+        }
+        // Clear volume requirement: middle layer boundary row empty AND top-layer center cell empty in neighbor facing the landing.
+        function clearVolumeOpen(proto, face){
+          const v = proto.voxels;
+          let middleOk = middleFaceOpen(proto, face);
+          if (!middleOk) return false;
+          if (face==='posZ') return v[2][2][1]===0; // top center of boundary slice
+          if (face==='negZ') return v[0][2][1]===0;
+            // For X faces, sample top layer center column in that face
+          if (face==='posX') return v[1][2][2]===0; // use middle z slice top center at x=2
+          if (face==='negX') return v[1][2][0]===0;
+          return true;
+        }
         for (let a=0;a<n;a++){
           for (let b=0;b<n;b++){
-            // Lateral adjacency always allowed regardless of stair status (Strategy A focuses only vertical lock)
-            rules.push(['y',a,b]);
-            rules.push(['z',a,b]);
+            const A = tilePrototypes[a];
+            const B = tilePrototypes[b];
+            const aStair = A.meta && A.meta.role==='stair';
+            const bStair = B.meta && B.meta.role==='stair';
+            // Disallow horizontal adjacency between two stairs (isolate stairs in 2D).
+            const horizontalBlocked = aStair && bStair;
+            let allowZForward = true, allowZBackward = true, allowXForward = true, allowXBackward = true;
+            if (aStair && A.meta.axis==='z'){
+              if (A.meta.dir===1){
+                // Forward +Z needs full clear volume on neighbor's -Z face
+                allowZForward = clearVolumeOpen(B, 'negZ');
+                // Backward entry still only needs middle row clearance
+                allowZBackward = middleFaceOpen(B, 'posZ');
+              } else {
+                allowZBackward = clearVolumeOpen(B, 'posZ');
+                allowZForward = middleFaceOpen(B, 'negZ');
+              }
+            }
+            if (aStair && A.meta.axis==='x'){
+              if (A.meta.dir===1){
+                allowXForward = clearVolumeOpen(B, 'negX');
+                allowXBackward = middleFaceOpen(B, 'posX');
+              } else {
+                allowXBackward = clearVolumeOpen(B, 'posX');
+                allowXForward = middleFaceOpen(B, 'negX');
+              }
+            }
+            if (!horizontalBlocked){
+              if (allowXForward) rules.push(['y',a,b]);
+              if (allowXBackward) rules.push(['y',a,b]);
+              if (allowZForward) rules.push(['z',a,b]);
+              if (allowZBackward) rules.push(['z',a,b]);
+            }
             if (canStack(b,a)) rules.push(['x',a,b]);
           }
         }
@@ -372,13 +425,51 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
     const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
     // Mini viewer selection handling (needs THREERef defined first)
     setupMiniViewer(tiles, meshUtil, THREERef);
-    // Build group
-  const group = new THREERef.Group();
-        tiles.forEach(t => {
-          const gm = meshUtil.buildTileMesh({THREE: THREERef, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
-          gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); // x<-tileX,z<-tileZ,y<-tileY mapping
-          group.add(gm);
-        });
+    // Build group with neighbor-aware mesh generation
+    const group = new THREERef.Group();
+    
+    // Create a lookup map for quick neighbor detection
+    const tileMap = new Map();
+    tiles.forEach(t => {
+      const key = `${t.position[0]},${t.position[1]},${t.position[2]}`;
+      tileMap.set(key, t);
+    });
+    
+    function isStairTile(tile) {
+      const proto = tilePrototypes[tile.prototypeIndex];
+      return proto.meta && proto.meta.role === 'stair';
+    }
+    
+    function getNeighbor(tile, deltaZ, deltaY, deltaX) {
+      const newPos = [
+        tile.position[0] + deltaZ,
+        tile.position[1] + deltaY, 
+        tile.position[2] + deltaX
+      ];
+      const key = `${newPos[0]},${newPos[1]},${newPos[2]}`;
+      return tileMap.get(key);
+    }
+    
+    tiles.forEach(t => {
+      // Check for stair neighbors
+      const tileBelow = getNeighbor(t, 0, -1, 0);
+      const tileAbove = getNeighbor(t, 0, 1, 0);
+      
+      const hasStairBelow = tileBelow && isStairTile(tileBelow);
+      const hasStairAbove = tileAbove && isStairTile(tileAbove);
+      
+      // Pass neighbor context to mesh builder
+      const gm = meshUtil.buildTileMesh({
+        THREE: THREERef, 
+        prototypeIndex: t.prototypeIndex, 
+        rotationY: t.rotationY, 
+        unit: 3,
+        hasStairBelow,
+        hasStairAbove
+      });
+      gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); // x<-tileX,z<-tileZ,y<-tileY mapping
+      group.add(gm);
+    });
   updateDungeonMesh(group);
   // Build overlays if requested
   if (window.__SHOW_TILE_IDS && instance.rebuildTileIdOverlays){ instance.rebuildTileIdOverlays(); }
@@ -445,8 +536,45 @@ export function createRenderer({ THREE, containerId = 'threejs-canvas' } = {}) {
       } catch(_){ }
       const THREERef = window.THREE || (await import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'));
       const group = new THREERef.Group();
+      
+      // Stair demo neighbor detection
+      const tileMap = new Map();
+      tiles.forEach(t => {
+        const key = `${t.position[0]},${t.position[1]},${t.position[2]}`;
+        tileMap.set(key, t);
+      });
+      
+      function isStairTile(tile) {
+        const proto = tilePrototypes[tile.prototypeIndex];
+        return proto.meta && proto.meta.role === 'stair';
+      }
+      
+      function getNeighbor(tile, deltaZ, deltaY, deltaX) {
+        const newPos = [
+          tile.position[0] + deltaZ,
+          tile.position[1] + deltaY, 
+          tile.position[2] + deltaX
+        ];
+        const key = `${newPos[0]},${newPos[1]},${newPos[2]}`;
+        return tileMap.get(key);
+      }
+      
       tiles.forEach(t=>{
-        const gm = meshUtil.buildTileMesh({THREE:THREERef, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3});
+        // Check for stair neighbors in demo
+        const tileBelow = getNeighbor(t, 0, -1, 0);
+        const tileAbove = getNeighbor(t, 0, 1, 0);
+        
+        const hasStairBelow = tileBelow && isStairTile(tileBelow);
+        const hasStairAbove = tileAbove && isStairTile(tileAbove);
+        
+        const gm = meshUtil.buildTileMesh({
+          THREE:THREERef, 
+          prototypeIndex:t.prototypeIndex, 
+          rotationY:t.rotationY, 
+          unit:3,
+          hasStairBelow,
+          hasStairAbove
+        });
         gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3);
         group.add(gm);
       });

@@ -21,20 +21,20 @@ describe('tileset', () => {
 
   test('initializes expected number of prototypes and registers each', () => {
     const info = initializeTileset();
-    // Updated tileset now has 10 prototypes after normalization
-    expect(tilePrototypes.length).toBe(10);
-    expect(protoTileIds.length).toBe(10);
-    expect(global.NDWFC3D.callCount()).toBe(10);
+    // After adding directional stair variants plus open landing tile we now expect 13 prototypes.
+    expect(tilePrototypes.length).toBe(13);
+    expect(protoTileIds.length).toBe(13);
+    expect(global.NDWFC3D.callCount()).toBe(13);
     expect(info.emptyWithFloorProtoIdx).toBeGreaterThanOrEqual(0);
     expect(info.solidProtoIdx).toBeGreaterThan(info.emptyWithFloorProtoIdx);
   });
 
   test('idempotent initializeTileset does not duplicate', () => {
     initializeTileset();
-    expect(global.NDWFC3D.callCount()).toBe(10);
+    expect(global.NDWFC3D.callCount()).toBe(13);
     initializeTileset();
-    expect(tilePrototypes.length).toBe(10);
-    expect(global.NDWFC3D.callCount()).toBe(10);
+    expect(tilePrototypes.length).toBe(13);
+    expect(global.NDWFC3D.callCount()).toBe(13);
   });
 
   test('solid cube prototype voxels all 1s', () => {
@@ -61,22 +61,33 @@ describe('tileset', () => {
     expect(any.transforms).toEqual(["ry","ry+ry","ry+ry+ry"]);
   });
 
-  test('only portal tiles have holes in floor or ceiling', () => {
+  test('directional stair prototypes exist with expected forward-face openness', () => {
     initializeTileset();
-    function layerHasHoleRow(voxels, yRow) {
-      for (let z=0; z<3; z++) {
-        for (let x=0; x<3; x++) {
-          if (voxels[z][yRow][x] === 0) return true; // hole (absence) in that full row position
-        }
-      }
-      return false;
+    const stairs = tilePrototypes.filter(p => p.meta && p.meta.role === 'stair');
+    expect(stairs.length).toBe(4); // +Z, -Z, +X, -X
+    function middleFaceOpen(proto, face){
+      const v = proto.voxels;
+      if (face==='posZ') return v[2][1][1] === 0;
+      if (face==='negZ') return v[0][1][1] === 0;
+      if (face==='posX') return v[1][1][2] === 0;
+      if (face==='negX') return v[1][1][0] === 0;
+      return true;
     }
-    const portalIds = new Set([31,32]);
-    for (const proto of tilePrototypes) {
-      const hasFloorHole = layerHasHoleRow(proto.voxels,0) && proto.voxels.some(zLayer=>zLayer[0].some(v=>v===0));
-      const hasCeilingHole = layerHasHoleRow(proto.voxels,2) && proto.voxels.some(zLayer=>zLayer[2].some(v=>v===0));
-      if (hasFloorHole || hasCeilingHole) {
-        expect(portalIds.has(proto.tileId)).toBe(true);
+    for (const stair of stairs){
+      const { axis, dir } = stair.meta;
+      if (axis==='z'){
+        if (dir===1){
+          // forward +Z => neighbor face is -Z of neighbor, so stair's +Z face should be mostly open at mid boundary (its own far layer should have empties)
+          expect(middleFaceOpen(stair, 'posZ')).toBe(true);
+        } else {
+          expect(middleFaceOpen(stair, 'negZ')).toBe(true);
+        }
+      } else if (axis==='x') {
+        if (dir===1){
+          expect(middleFaceOpen(stair, 'posX')).toBe(true);
+        } else {
+          expect(middleFaceOpen(stair, 'negX')).toBe(true);
+        }
       }
     }
   });

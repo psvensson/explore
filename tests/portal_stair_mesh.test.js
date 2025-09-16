@@ -48,14 +48,16 @@ describe('portal stair mesh openness', () => {
     expect(types.some(t => t==='stair' || t==='portal-stair')).toBe(true);
   });
 
-  test('upper portal (32) has no floor geometry and contains stair steps', () => {
+  test('upper portal (32) now includes solid floor (design change) and has no ceiling', () => {
     const { upper } = getPortalTiles();
     const mesh = buildForProto(upper);
     const types = collectTypes(mesh);
-    // Should not include any floor plates
-    expect(types).not.toContain('floor');
-    expect(types).not.toContain('floor_full');
-    // Should include stair representation
+    // Floors are now expected
+    expect(types.filter(t=>t==='floor' || t==='floor_full').length).toBeGreaterThan(0);
+    // Still no ceiling geometry
+    expect(types).not.toContain('ceiling');
+    expect(types).not.toContain('ceiling_full');
+    // Includes stair representation
     expect(types.some(t => t==='stair' || t==='portal-stair')).toBe(true);
   });
 
