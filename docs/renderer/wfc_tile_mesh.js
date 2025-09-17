@@ -4,15 +4,7 @@
 // and build simple Three.js meshes for visualization.
 
 import { tilePrototypes } from '../dungeon/tileset.js';
-
-// Internal material cache keyed by the THREE namespace object to avoid mutating
-// the (non-extensible) ES module namespace. Using WeakMap prevents leaks.
-const __WFC_MATERIAL_CACHE = new WeakMap();
-function getMaterialCache(THREE){
-  let c = __WFC_MATERIAL_CACHE.get(THREE);
-  if (!c){ c = {}; __WFC_MATERIAL_CACHE.set(THREE, c); }
-  return c;
-}
+import { makeGeometryFactory, makeMaterialFactory, isAllSolid, buildStairs, getMaterialCache } from './mesh_factories.js';
 
 // --- Rotation Helpers (Y axis only, matching tileset usage) ---
 export function rotateYOnce(vox){
@@ -160,390 +152,49 @@ function detectStairDirection(vox) {
 }
 
 // Build Three.js mesh (Group) for a given detected tile (using underlying prototype voxels before rotation).
-export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasStairBelow=false, hasStairAbove=false}={}){
-  if (!THREE) throw new Error('THREE dependency missing');
-  const proto = tilePrototypes[prototypeIndex];
-  if (!proto) throw new Error('Invalid prototype index');
-  const vox = rotateY(proto.voxels, rotationY);
-  // Fast path: solid tile made entirely of 1s -> render as a single full cube
-  let solidOnes = true;
-  outer: for (let z=0; z<3; z++) for (let y=0; y<3; y++) for (let x=0; x<3; x++){
-    if (vox[z][y][x] !== 1) { solidOnes = false; break outer; }
-  }
-  if (solidOnes){
-    const BG = THREE.BoxGeometry||function(){};
-    const geom = new BG(unit, unit, unit);
-    const M = THREE.Mesh||function(){ return { position:{ set(){} } } };
-    // reuse mid material for solid cube
-    const cache = getMaterialCache(THREE);
-    const midMat = (function(){
-      const Mtl = THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(cfg){this.color=cfg.color;};
-      if (!cache.mid){ cache.mid = new Mtl({color:0x555555}); cache.mid.userData={type:'mid'}; }
-      return cache.mid;
-    })();
-    const mesh = new M(geom, midMat);
-    if (mesh.position && mesh.position.set) mesh.position.set(unit/2, unit/2, unit/2);
-    const G = THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); };
-    const grp = new G(); grp.add(mesh); return grp;
-  }
-  const group = new (THREE.Group||function(){ this.children=[]; this.add=o=>this.children.push(o); })();
-  // Geometry cache for different voxel roles to avoid recreating.
-  const geometryCache = {};
-  function createRampGeometry(axis, dir){
-    const BG = THREE.BufferGeometry||function(){};
-    const geom = new BG();
-    const h = unit/2; // half dimensions for centered geometry
-    const verts = [];
-    // Build a ramp that occupies exactly half the cube volume (triangular prism).
-    // Base dimensions: unit x unit footprint, height: unit. Slope along +axis when dir>0, else along -axis.
-    if (axis === 'x'){
-      // Start from the +Z ramp (slope along +Z) and swap x<->z
-      const v = [
-        [-h, 0, -h], [-h, 0, h], [-h, unit, h],
-        [ h, 0, -h], [ h, 0, h], [ h, unit, h]
-      ];
-      for (const p of v){
-        let x = p[2], y = p[1], z = p[0];
-        if (dir && dir < 0) x = -x; // flip to slope along -X
-        verts.push(x, y, z);
-      }
-    } else {
-      // axis 'z': ramp rises along +Z, extruded along X
-      const v = [
-        [-h, 0, -h], [-h, 0, h], [-h, unit, h],
-        [ h, 0, -h], [ h, 0, h], [ h, unit, h]
-      ];
-      for (const p of v){
-        let x = p[0], y = p[1], z = p[2];
-        if (dir && dir < 0) z = -z; // flip to slope along -Z
-        verts.push(x, y, z);
-      }
-    }
-    const idx = [
-      // Left triangular cap (0,1,2)
-      0,1,2,
-      // Right triangular cap (3,5,4)
-      3,5,4,
-      // Bottom rectangle (0,3,4,1)
-      0,3,4, 0,4,1,
-      // Back rectangle at +axis (1,4,5,2)
-      1,4,5, 1,5,2,
-      // Sloped rectangle (0,3,5,2)
-      0,3,5, 0,5,2
-    ];
-    if (geom.setAttribute){
-      const pos = new THREE.Float32BufferAttribute(verts, 3);
-      geom.setAttribute('position', pos);
-      geom.setIndex(idx);
-      if (geom.computeVertexNormals) geom.computeVertexNormals();
-    }
-    return geom;
-  }
-  function createVoxelRampGeometry(axis, dir){
-    const BG = THREE.BufferGeometry||function(){};
-    const geom = new BG();
-    const full = unit/3;
-    const hv = full/2; // half voxel size
-    const verts = [];
-    if (axis==='x'){
-      const v = [
-        [-hv, 0, -hv], [-hv, 0, hv], [-hv, full, hv],
-        [ hv, 0, -hv], [ hv, 0, hv], [ hv, full, hv]
-      ];
-      for (const p of v){
-        let x = p[2], y = p[1], z = p[0];
-        if (dir && dir < 0) x = -x;
-        verts.push(x,y,z);
-      }
-    } else {
-      const v = [
-        [-hv, 0, -hv], [-hv, 0, hv], [-hv, full, hv],
-        [ hv, 0, -hv], [ hv, 0, hv], [ hv, full, hv]
-      ];
-      for (const p of v){
-        let x = p[0], y = p[1], z = p[2];
-        if (dir && dir < 0) z = -z;
-        verts.push(x,y,z);
-      }
-    }
-    const idx = [0,1,2, 3,5,4, 0,3,4, 0,4,1, 1,4,5, 1,5,2, 0,3,5, 0,5,2];
-    if (geom.setAttribute){
-      const pos = new THREE.Float32BufferAttribute(verts,3);
-      geom.setAttribute('position', pos);
-      geom.setIndex(idx);
-      if (geom.computeVertexNormals) geom.computeVertexNormals();
-    }
-    return geom;
-  }
-  function createHalfTileHeightRampGeometry(axis, dir){
-    const BG = THREE.BufferGeometry||function(){};
-    const geom = new BG();
-    const full = unit/3; // footprint size for a voxel
-    const fv = full/2;
-    const height = unit/2; // half tile height
-    const verts = [];
-    if (axis==='x'){
-      const v = [
-        [-fv, 0, -fv], [-fv, 0, fv], [-fv, height, fv],
-        [ fv, 0, -fv], [ fv, 0, fv], [ fv, height, fv]
-      ];
-      for (const p of v){
-        let x = p[2], y = p[1], z = p[0];
-        if (dir && dir < 0) x = -x;
-        verts.push(x,y,z);
-      }
-    } else {
-      const v = [
-        [-fv, 0, -fv], [-fv, 0, fv], [-fv, height, fv],
-        [ fv, 0, -fv], [ fv, 0, fv], [ fv, height, fv]
-      ];
-      for (const p of v){
-        let x = p[0], y = p[1], z = p[2];
-        if (dir && dir < 0) z = -z;
-        verts.push(x,y,z);
-      }
-    }
-    const idx = [0,1,2, 3,5,4, 0,3,4, 0,4,1, 1,4,5, 1,5,2, 0,3,5, 0,5,2];
-    if (geom.setAttribute){
-      const pos = new THREE.Float32BufferAttribute(verts,3);
-      geom.setAttribute('position', pos);
-      geom.setIndex(idx);
-      if (geom.computeVertexNormals) geom.computeVertexNormals();
-    }
-    return geom;
-  }
-  function getGeometry(kind){
-    if (geometryCache[kind]) return geometryCache[kind];
-    const BG = THREE.BoxGeometry||function(){};
-    let g;
-    const full = unit/3;
-    switch(kind){
-      case 'floor_full': {
-        g = new BG(unit, full*0.1, unit); break;
-      }
-      case 'ceiling_full': {
-        g = new BG(unit, full*0.1, unit); break;
-      }
-      case 'floor': {
-        // Very thin slab (1/10 height)
-        g = new BG(full, full*0.1, full); break;
-      }
-      case 'ceiling': {
-        g = new BG(full, full*0.1, full); break;
-      }
-      case 'wall_xMajor': { // spans full tile along X, thin along Z, full height
-        g = new BG(unit, unit, full*0.1); break;
-      }
-      case 'wall_zMajor': { // spans full tile along Z, thin along X, full height
-        g = new BG(full*0.1, unit, unit); break;
-      }
-      case 'wall_pillar': { // ambiguous -> thin both directions, full height
-        g = new BG(full*0.3, unit, full*0.3); break;
-      }
-      case 'mid': { // fallback mid, full height
-        g = new BG(full*0.6, unit, full*0.6); break; }
-      case 'stair': {
-        // Keep near full size for readability
-        g = new BG(full, full, full); break;
-      }
-      default: g = new BG(full, full, full);
-    }
-    geometryCache[kind]=g; return g;
-  }
-
-  // Material cache (per THREE instance)
-  const cache = getMaterialCache(THREE);
-  function noiseTexture(color){
-    // In test (jsdom) environment Canvas 2D may be unimplemented; fail soft returning null
-    try {
-      if (!THREE.CanvasTexture || !globalThis.document) return null;
-      // Detect JSDOM environment and skip canvas operations to avoid console errors
-      if (globalThis.navigator?.userAgent?.includes('jsdom')) return null;
-      const size=32; const c=document.createElement('canvas'); c.width=c.height=size; 
-      // Additional check to avoid JSDOM canvas issues
-      if (!c.getContext) return null;
-      const ctx=c.getContext('2d');
-      if (!ctx || !ctx.createImageData) return null;
-      const r=(color>>16)&255,g=(color>>8)&255,b=color&255; const img=ctx.createImageData(size,size);
-      for (let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255; }
-      ctx.putImageData(img,0,0); const tex=new THREE.CanvasTexture(c); return tex;
-    } catch(e){ return null; }
-  }
-  function mat(key,color,label){
-    if (cache[key]) return cache[key];
-    const M = THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(cfg){this.color=cfg.color;};
-    const tex = noiseTexture(color);
-    const m = new M({ color, map:tex||undefined });
-    m.userData = { type: label };
-    cache[key]=m; return m;
-  }
-  const floorMat   = mat('floor',   0x333333,'floor');
-  const midMat     = mat('mid',     0x555555,'mid');
-  const ceilingMat = mat('ceiling', 0x888888,'ceiling');
-  const stairMat   = mat('stair',   0x777777,'stair');
-
-  // Check if this tile has stairs using simple voxel detection
-  const hasStairs = hasStairVoxel(vox);
-  // Prefer prototype metadata if provided for axis/dir to avoid heuristic mistakes
-  let stairDirection = null;
-  if (hasStairs){
-    if (proto.meta && proto.meta.role==='stair' && proto.meta.axis && proto.meta.dir){
-      stairDirection = { axis: proto.meta.axis, dir: proto.meta.dir };
-    } else {
-      stairDirection = detectStairDirection(vox);
-    }
-  }
-
-  // Render stair steps if stairs are present
-  if (hasStairs && stairDirection) {
-    const { axis, dir } = stairDirection;
-    const full = unit/3;
-    const stepHeight = unit/3;
-    const treadDepth = unit/3;
-    const StepGeom = THREE.BoxGeometry||function(){};
-    
-    for (let i = 0; i < 3; i++) {
-      const geom = new StepGeom(
-        axis === 'x' ? treadDepth : unit/3, // width along x
-        stepHeight,                         // height
-        axis === 'z' ? treadDepth : unit/3  // width along z
-      );
-      const mesh = new (THREE.Mesh||function(){return { position:{ set(){} }}})(geom, stairMat);
-      if (mesh.position && mesh.position.set) {
-        // Position baseline
-        let xPos = unit/2, zPos = unit/2;
-        
-        // Offset along axis from start
-        const offset = (i + 0.5) * treadDepth; // center each step segment
-        if (axis === 'z') {
-          const startZ = (dir > 0) ? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
-          zPos = startZ + (dir > 0 ? offset : -offset);
-        } else {
-          const startX = (dir > 0) ? (unit/2 - 1.5*treadDepth) : (unit/2 + 1.5*treadDepth);
-          xPos = startX + (dir > 0 ? offset : -offset);
-        }
-        
-        const yPos = full*0.1 + (i+0.5)*stepHeight; // stack steps upward from floor top
-        mesh.position.set(xPos, yPos, zPos);
-      }
-      group.add(mesh);
-    }
-  }
-
-  // Per-voxel floor / ceiling rendering strategy: emit a thin slab for each
-  // occupied voxel in the bottom (y=0) or top (y=2) layer instead of attempting
-  // to aggregate into a single full plate. This means:
-  //  - A layer of all 1s visually appears solid (because 9 slabs tile the area)
-  //  - Any holes remain open naturally
-  //  - A completely empty top or bottom layer produces no geometry at all
-  // Simplified stair logic: any tile with stair voxels (value 2) gets special treatment
-  for (let z=0; z<3; z++) for (let y=0;y<3;y++) for (let x=0;x<3;x++){
-    const v = vox[z][y][x];
-    if (v>0){
-      let material = (v===2 ? stairMat : midMat);
-      let geomKind='mid';
-      
-      // Stair tiles now have solid floors; only suppress ceilings to keep vertical passage open
-      if (hasStairs && y === 2) {
-        continue; // No ceiling on stair tiles - allows vertical traversal
-      }
-      
-      // Neighbor-aware floor/ceiling: if this tile is above a stair, don't render floor
-      if (hasStairBelow && y === 0) {
-        continue; // No floor when there are stairs below - allows stair access from below
-      }
-      
-      // If this tile is below a stair, don't render ceiling  
-      if (hasStairAbove && y === 2) {
-        continue; // No ceiling when there are stairs above - allows stair access from above
-      }
-      
-      if (y===0){
-        material = floorMat; geomKind='floor';
-      }
-      else if (y===2){
-        material = ceilingMat; geomKind='ceiling';
-      }
-      else if (y===1){
-        // Suppress central mid pillar when stairs present
-        if (hasStairs && x===1 && z===1){
-          continue;
-        }
-        // Treat mid layer (including 'stair' voxels) as wall plates per orientation
-        const hasX = (x>0 && vox[z][y][x-1]>0) || (x<2 && vox[z][y][x+1]>0);
-        const hasZ = (z>0 && vox[z-1][y][x]>0) || (z<2 && vox[z+1][y][x]>0);
-        
-        if (hasX && !hasZ) geomKind='wall_xMajor';
-        else if (hasZ && !hasX) geomKind='wall_zMajor';
-        else if (hasX && hasZ) geomKind='wall_both';
-        else geomKind='wall_both';
-        
-        // Remove lateral wall plates for stair tiles to keep them open
-        if (hasStairs && (geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both')){
-          continue;
-        }
-      }
-      // Decide per-axis emission to avoid duplicates and ensure boundary coverage
-      let emitX = false, emitZ = false;
-      if (geomKind==='wall_xMajor' || geomKind==='wall_both'){
-        const front = (z<=1);
-        emitX = ((front && z===0) || (!front && z===2)) && (x===1);
-      }
-      if (geomKind==='wall_zMajor' || geomKind==='wall_both'){
-        const left = (x<=1);
-        emitZ = ((left && x===0) || (!left && x===2)) && (z===1);
-      }
-
-      // Handle non-wall kinds normally
-      if (!(geomKind==='wall_xMajor' || geomKind==='wall_zMajor' || geomKind==='wall_both' || geomKind==='wall_pillar')){
-        const geometry = getGeometry(geomKind);
-        const mesh = new (THREE.Mesh||function(){return {}})(geometry, material);
-        if (mesh.position){
-        const full = unit/3;
-        const thin = full*0.1;
-  // Default centered; for walls we use full tile height so center at tile center in Y
-  let px = x*full + full/2;
-  let py = unit/2;
-  let pz = z*full + full/2;
-        if (geomKind==='floor') {
-          // Per-voxel thin slab cell
-          px = x*full + full/2; pz = z*full + full/2; py = y*full + thin/2;
-        } else if (geomKind==='ceiling') {
-          px = x*full + full/2; pz = z*full + full/2; py = y*full + full - thin/2;
-        } else if (geomKind==='wall_pillar') {
-          // remain centered
-        }
-        mesh.position.set(px, py, pz);
-        }
-        group.add(mesh);
-        continue;
-      }
-
-      // Walls: emit along X boundary
-      if (emitX){
-        const geometryX = getGeometry('wall_xMajor');
-        const meshX = new (THREE.Mesh||function(){return {}})(geometryX, material);
-        if (meshX.position){
-          const full = unit/3; const thin = full*0.1;
-          const pz = (z<=1) ? (0 + thin/2) : (unit - thin/2);
-          meshX.position.set(unit/2, unit/2, pz);
-        }
-        group.add(meshX);
-      }
-      // Walls: emit along Z boundary
-      if (emitZ){
-        const geometryZ = getGeometry('wall_zMajor');
-        const meshZ = new (THREE.Mesh||function(){return {}})(geometryZ, material);
-        if (meshZ.position){
-          const full = unit/3; const thin = full*0.1;
-          const pxb = (x<=1) ? (0 + thin/2) : (unit - thin/2);
-          meshZ.position.set(pxb, unit/2, unit/2);
-        }
-        group.add(meshZ);
-      }
-    }
-  }
-  return group;
+// ---- Helper bridges to shared factories ----
+function solidGroup(THREE, unit, cache){
+  const BG=THREE.BoxGeometry||function(){}; const geom=new BG(unit,unit,unit);
+  const M=THREE.Mesh||function(){return {position:{set(){}}}};
+  const Mtl=THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(c){this.color=c.color;};
+  if(!cache.mid){ cache.mid=new Mtl({color:0x555555}); cache.mid.userData={type:'mid'}; }
+  const mesh=new M(geom, cache.mid); if(mesh.position) mesh.position.set(unit/2,unit/2,unit/2);
+  const G=THREE.Group||function(){this.children=[];this.add=o=>this.children.push(o);}; const g=new G(); g.add(mesh); return g;
 }
+const stairDir=(proto,vox)=>{ if(!hasStairVoxel(vox)) return null; if(proto.meta&&proto.meta.role==='stair'&&proto.meta.axis&&proto.meta.dir) return {axis:proto.meta.axis,dir:proto.meta.dir}; return detectStairDirection(vox); };
+const classifyMid=(vox,x,y,z,hasStairs)=>{ if(y!==1) return null; if(hasStairs && x===1 && z===1) return 'skip'; const hx=(x>0&&vox[z][y][x-1]>0)||(x<2&&vox[z][y][x+1]>0); const hz=(z>0&&vox[z-1][y][x]>0)||(z<2&&vox[z+1][y][x]>0); if(hx&&!hz) return 'wall_xMajor'; if(hz&&!hx) return 'wall_zMajor'; return 'wall_both'; };
+function skipVoxel({y,hasStairs,hasStairBelow,hasStairAbove}){ if(hasStairs && y===2) return true; if(hasStairBelow && y===0) return true; if(hasStairAbove && y===2) return true; return false; }
+function placeNonWall({THREE,group,geomKind,material,x,y,z,unit}){ const geometry=this.getGeometry(geomKind); const mesh=new (THREE.Mesh||function(){return {position:{set(){}}}})(geometry,material); if(mesh.position){ const f=unit/3,t=f*0.1; let px=x*f+f/2,py=unit/2,pz=z*f+f/2; if(geomKind==='floor'){ py=y*f+t/2; } else if(geomKind==='ceiling'){ py=y*f+f-t/2; } mesh.position.set(px,py,pz);} group.add(mesh); }
+function emitWalls({THREE,group,emitX,emitZ,unit,material,z,x}){ const f=unit/3,t=f*0.1; if(emitX){ const g=this.getGeometry('wall_xMajor'); const m=new (THREE.Mesh||function(){return {position:{set(){}}}})(g,material); if(m.position){ const pz=(z<=1)?(0+t/2):(unit-t/2); m.position.set(unit/2,unit/2,pz);} group.add(m);} if(emitZ){ const g=this.getGeometry('wall_zMajor'); const m=new (THREE.Mesh||function(){return {position:{set(){}}}})(g,material); if(m.position){ const px=(x<=1)?(0+t/2):(unit-t/2); m.position.set(px,unit/2,unit/2);} group.add(m);} }
+function processVoxels(ctx){
+  const {vox,unit,hasStairs,hasStairBelow,hasStairAbove,materials,group}=ctx;
+  for(let z=0;z<3;z++) for(let y=0;y<3;y++) for(let x=0;x<3;x++){
+    const v=vox[z][y][x]; if(v<=0) continue; if(skipVoxel({y,hasStairs,hasStairBelow,hasStairAbove})) continue;
+    let geomKind='mid'; let material=(v===2?materials.stair:materials.mid);
+    if(y===0){ material=materials.floor; geomKind='floor'; }
+    else if(y===2){ material=materials.ceiling; geomKind='ceiling'; }
+    else {
+      const midClass=classifyMid(vox,x,y,z,hasStairs); if(midClass==='skip') continue; geomKind=midClass;
+      if(hasStairs && geomKind.startsWith('wall')) continue;
+    }
+    let emitX=false, emitZ=false;
+    if(geomKind==='wall_xMajor'||geomKind==='wall_both'){
+      const front=(z<=1); emitX=((front&&z===0)||(!front&&z===2))&&(x===1);
+    }
+    if(geomKind==='wall_zMajor'||geomKind==='wall_both'){
+      const left=(x<=1); emitZ=((left&&x===0)||(!left&&x===2))&&(z===1);
+    }
+    if(!geomKind.startsWith('wall')){
+      placeNonWall.call(ctx,{THREE:ctx.THREE,group,geomKind,material,x,y,z,unit});
+      continue;
+    }
+    emitWalls.call(ctx,{THREE:ctx.THREE,group,emitX,emitZ,unit,material,z,x});
+  }
+}
+
+export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasStairBelow=false, hasStairAbove=false}={}){
+  if(!THREE) throw new Error('THREE dependency missing'); const proto=tilePrototypes[prototypeIndex]; if(!proto) throw new Error('Invalid prototype index'); const vox=rotateY(proto.voxels, rotationY); const cache=getMaterialCache(THREE); if(isAllSolid(vox)) return solidGroup(THREE,unit,cache);
+  const group=new (THREE.Group||function(){this.children=[];this.add=o=>this.children.push(o);})(); const getGeometry=makeGeometryFactory(THREE,unit); const mat=makeMaterialFactory(THREE); const materials={ floor:mat('floor',0x333333,'floor'), mid:mat('mid',0x555555,'mid'), ceiling:mat('ceiling',0x888888,'ceiling'), stair:mat('stair',0x777777,'stair') };
+  const dirInfo=stairDir(proto, vox); buildStairs({THREE,group,dirInfo,unit,stairMat:materials.stair}); processVoxels({THREE,vox,unit,hasStairs:!!dirInfo,hasStairBelow,hasStairAbove,materials,group,getGeometry}); return group; }
 
 export default { rotateYOnce, rotateY, detectTile, parseVoxelGridToTiles, buildTileMesh };

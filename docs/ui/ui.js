@@ -22,17 +22,44 @@ export function initUI(rootId = 'control-panel') {
     '<label>Length <input id="wfc-size-z" type="number" value="3" min="1" style="width:60px"/></label>';
   controlPanel.appendChild(sizeWrap);
 
+  // Advanced WFC options
+  const advWrap = document.createElement('div');
+  advWrap.style.marginTop='6px';
+  advWrap.style.fontSize='12px';
+  advWrap.style.display='grid';
+  advWrap.style.gridTemplateColumns='repeat(2, auto)';
+  advWrap.style.gap='6px 10px';
+  advWrap.innerHTML = [
+    '<label>yieldEvery <input id="wfc-yield-every" type="number" value="500" min="1" style="width:70px"/></label>',
+    '<label>maxSteps <input id="wfc-max-steps" type="number" value="30000" min="100" style="width:70px"/></label>',
+    '<label>stallTimeoutMs <input id="wfc-stall-timeout" type="number" value="10000" min="100" style="width:70px"/></label>',
+    '<label>maxYields <input id="wfc-max-yields" type="number" value="50" min="1" style="width:70px"/></label>'
+  ].join(' ');
+  controlPanel.appendChild(advWrap);
+
+  const btnWrap = document.createElement('div');
+  btnWrap.style.marginTop='6px';
+  btnWrap.style.display='flex';
+  btnWrap.style.gap='6px';
   const generateWFCButton = document.createElement('button');
   generateWFCButton.innerText = 'Generate';
-  generateWFCButton.style.marginTop='6px';
   generateWFCButton.addEventListener('click', () => {
     const sx = parseInt(document.getElementById('wfc-size-x').value,10);
     const sy = parseInt(document.getElementById('wfc-size-y').value,10);
     const sz = parseInt(document.getElementById('wfc-size-z').value,10);
+    const yieldEvery = parseInt(document.getElementById('wfc-yield-every').value,10);
+    const maxSteps = parseInt(document.getElementById('wfc-max-steps').value,10);
+    const stallTimeoutMs = parseInt(document.getElementById('wfc-stall-timeout').value,10);
+    const maxYields = parseInt(document.getElementById('wfc-max-yields').value,10);
     logAction(`generate-wfc-${sx}x${sy}x${sz}`);
-    if (window.generateWFCDungeon) window.generateWFCDungeon({x:sx,y:sy,z:sz});
+    if (window.generateWFCDungeon) window.generateWFCDungeon({x:sx,y:sy,z:sz, yieldEvery, maxSteps, stallTimeoutMs, maxYields});
   });
-  controlPanel.appendChild(generateWFCButton);
+  const cancelButton = document.createElement('button');
+  cancelButton.innerText = 'Cancel';
+  cancelButton.addEventListener('click', () => { if (window.cancelWFCDungeon) window.cancelWFCDungeon(); });
+  btnWrap.appendChild(generateWFCButton);
+  btnWrap.appendChild(cancelButton);
+  controlPanel.appendChild(btnWrap);
 
   // Stair demo generation (minimal stair pair) button present in index.html
   const stairDemoBtn = document.getElementById('generate-stair-demo');
@@ -54,6 +81,17 @@ export function initUI(rootId = 'control-panel') {
   tileIdToggle.style.cursor='pointer';
   tileIdToggle.innerHTML = '<input id="toggle-tileids" type="checkbox" style="vertical-align:middle;margin-right:6px"/> Show Tile IDs';
   debugWrap.appendChild(tileIdToggle);
+
+  // WFC Debug logging toggle
+  const debugLoggingToggle = document.createElement('label');
+  debugLoggingToggle.style.cursor='pointer';
+  debugLoggingToggle.innerHTML = '<input id="toggle-wfc-debug" type="checkbox" style="vertical-align:middle;margin-right:6px"/> Enable WFC Debug Logs';
+  debugWrap.appendChild(debugLoggingToggle);
+  // Render Debug logging toggle
+  const renderDebugToggle = document.createElement('label');
+  renderDebugToggle.style.cursor='pointer';
+  renderDebugToggle.innerHTML = '<input id="toggle-render-debug" type="checkbox" style="vertical-align:middle;margin-right:6px"/> Enable Render Debug Logs';
+  debugWrap.appendChild(renderDebugToggle);
   controlPanel.appendChild(debugWrap);
 
   // Persist state across regenerations (session only)
@@ -64,6 +102,35 @@ export function initUI(rootId = 'control-panel') {
     if (window.dungeonRenderer && window.dungeonRenderer.rebuildTileIdOverlays){
       window.dungeonRenderer.rebuildTileIdOverlays();
     }
+  });
+
+  // Initialize WFC debug checkbox from global flag, URL, or session storage
+  try {
+    const urlFlag = (typeof URLSearchParams!=='undefined') && (new URLSearchParams(window.location.search).get('wfcDebug')==='1');
+    const stored = (typeof sessionStorage!=='undefined') && sessionStorage.getItem('WFC_DEBUG')==='1';
+    const initial = !!(window.__WFC_DEBUG__ || urlFlag || stored);
+    const dbgCb = document.getElementById('toggle-wfc-debug');
+    if (dbgCb) dbgCb.checked = initial;
+    window.__WFC_DEBUG__ = initial;
+  } catch(_) {}
+  debugLoggingToggle.addEventListener('change', ()=>{
+    const enabled = document.getElementById('toggle-wfc-debug').checked;
+    window.__WFC_DEBUG__ = enabled;
+    try { if (typeof sessionStorage!=='undefined') sessionStorage.setItem('WFC_DEBUG', enabled?'1':'0'); } catch(_) {}
+  });
+
+  // Initialize Render debug toggle
+  try {
+    const storedR = (typeof sessionStorage!=='undefined') && sessionStorage.getItem('RENDER_DEBUG')==='1';
+    const initialR = !!(window.__RENDER_DEBUG__ || storedR);
+    const rcb = document.getElementById('toggle-render-debug');
+    if (rcb) rcb.checked = initialR;
+    window.__RENDER_DEBUG__ = initialR;
+  } catch(_) {}
+  renderDebugToggle.addEventListener('change', ()=>{
+    const enabled = document.getElementById('toggle-render-debug').checked;
+    window.__RENDER_DEBUG__ = enabled;
+    try { if (typeof sessionStorage!=='undefined') sessionStorage.setItem('RENDER_DEBUG', enabled?'1':'0'); } catch(_) {}
   });
 
   // Build/version label (auto-updated by pre-commit hook)

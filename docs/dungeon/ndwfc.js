@@ -1,4 +1,9 @@
 /* moved from renderer/ndwfc.js */
+let __WFC_LOGGING__ = false;
+let __WFC_LOG_THROTTLE__ = 500; // ms
+let __WFC_LAST_LOG__ = 0;
+export function setWFCLogging(enabled,{throttleMs=500}={}){ __WFC_LOGGING__=!!enabled; __WFC_LOG_THROTTLE__=throttleMs; }
+
 var WFC = function({nd,weights,rules,wave}){
   wave = wave || {};
   var wavefront = {};
@@ -38,7 +43,7 @@ var WFC = function({nd,weights,rules,wave}){
   function argmax(vals){ var mi=-1,mv=-Infinity; for (var i=0;i<vals.length;i++){ if (vals[i]>mv){ mv=vals[i]; mi=i; }} return mi; }
   this.readout=function(collapse=true){ if(!collapse){ var result={}; for (var k in wave){ var oh=Array(n_patterns).fill(0); oh[wave[k]]=1; result[k]=oh;} for (var k in wavefront){ var s=wavefront[k].reduce((a,b)=>a+b,0); var oh=wavefront[k].map(x=>(s==0?0:x/s)); result[k]=oh;} return result;} var result={}; for (var k in wavefront){ if (wavefront[k].reduce((a,b)=>a+b,0)==1){ result[k]=argmax(wavefront[k]); }} return Object.assign({},wave,result); };
   this.expand=function(xmin,xmax){ var coords=[[0]]; for (var i=0;i<xmin.length;i++){ var cc=[]; for (var x=xmin[i]; x<xmax[i]; x++){ var c=[]; for (var j=0;j<coords.length;j++){ c.push(coords[j].concat(x)); } cc=cc.concat(c);} coords=cc;} coords=coords.map(x=>x.slice(1)).filter(x=>!(x in wave || x in wavefront)); coords.map(x=>wavefront[x]=new Array(n_patterns).fill(1)); for (var k in wave){ propagate(coord(k)); }};
-  this.step=function(){ var min_ent=Infinity; var min_arg=undefined; for (var k in wavefront){ var ent=entropy(wavefront[k]); if (isNaN(ent)){ for (var k in wavefront){ wavefront[k]=new Array(n_patterns).fill(1);} for (var k in wave){ propagate(coord(k)); } console.log(":("); return false } if (ent==0){ continue; } ent += (Math.random()-0.5); if (ent < min_ent){ min_ent=ent; min_arg=coord(k);} } if (min_ent==Infinity){ wave=this.readout(); wavefront={}; return true; } wavefront[min_arg]=collapse(wavefront[min_arg]); propagate(min_arg); return false; };
+  this.step=function(){ var min_ent=Infinity; var min_arg=undefined; for (var k in wavefront){ var ent=entropy(wavefront[k]); if (isNaN(ent)){ for (var k in wavefront){ wavefront[k]=new Array(n_patterns).fill(1);} for (var k in wave){ propagate(coord(k)); } if(!(typeof process!=='undefined' && process.env && process.env.JEST_WORKER_ID)) { if(__WFC_LOGGING__){ const now=Date.now(); if(now-__WFC_LAST_LOG__>__WFC_LOG_THROTTLE__){ console.warn("[WFC] entropy reset (NaN) – domain reinitialized"); __WFC_LAST_LOG__=now; } } } return false } if (ent==0){ continue; } ent += (Math.random()-0.5); if (ent < min_ent){ min_ent=ent; min_arg=coord(k);} } if (min_ent==Infinity){ wave=this.readout(); wavefront={}; return true; } wavefront[min_arg]=collapse(wavefront[min_arg]); propagate(min_arg); return false; };
 };
 if (typeof module === 'object'){ module.exports = WFC; }
 export default WFC;
