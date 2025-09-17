@@ -32,7 +32,7 @@ export function initUI(rootId = 'control-panel') {
   advWrap.innerHTML = [
     '<label>yieldEvery <input id="wfc-yield-every" type="number" value="500" min="1" style="width:70px"/></label>',
     '<label>maxSteps <input id="wfc-max-steps" type="number" value="30000" min="100" style="width:70px"/></label>',
-    '<label>stallTimeoutMs <input id="wfc-stall-timeout" type="number" value="10000" min="100" style="width:70px"/></label>',
+    '<label>stallTimeoutMs <input id="wfc-stall-timeout" type="number" value="60000" min="100" style="width:70px"/></label>',
     '<label>maxYields <input id="wfc-max-yields" type="number" value="50" min="1" style="width:70px"/></label>'
   ].join(' ');
   controlPanel.appendChild(advWrap);

@@ -113,5 +113,27 @@ export function buildRules(tilePrototypes, { isolateStairs=true, forwardHeuristi
       if (canStack(b,a)) rules.push([DIM_TOKENS.Y, a, b]);
     }
   }
-  return { rules, weights, diagnostics };
+  
+  // Deduplicate rules to reduce rule set size
+  const originalCount = rules.length;
+  const deduplicatedRules = deduplicateRules(rules);
+  diagnostics.originalRules = originalCount;
+  diagnostics.deduplicatedRules = deduplicatedRules.length;
+  diagnostics.rulesRemoved = originalCount - deduplicatedRules.length;
+  
+  return { rules: deduplicatedRules, weights, diagnostics };
+}
+
+/**
+ * Remove duplicate rules from the rule set.
+ * Rules are considered duplicate if they have the same dimension and tile indices.
+ */
+function deduplicateRules(rules) {
+  const seen = new Set();
+  return rules.filter(rule => {
+    const key = `${rule[0]}-${rule[1]}-${rule[2]}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

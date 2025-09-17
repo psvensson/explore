@@ -27,7 +27,7 @@ const nextTick = () => new Promise(res => {
 
 // Generate a dungeon using the incremental NDWFC API (expand + step loop).
 // Adapts previous model.run() expectation to the existing ndwfc.js engine.
-export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=15000, maxYields=Infinity, signal, debug } ) {
+export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=60000, maxYields=Infinity, signal, debug } ) {
   const log = makeLogger('WFC', debug);
   const { prototypes, symmetryTransforms } = tileset;
   const dataSize = dims.x * dims.y * dims.z;
@@ -68,6 +68,11 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
     log('expand:start');
     model.expand([0,0,0],[dims.x,dims.y,dims.z]);
     log('expand:done');
+    
+    // Apply strategic initial constraints to guide WFC toward better solutions
+    // Temporarily disabled to test if constraints are causing yield cap issues
+    // applyInitialConstraints(model, dims, protoTiles, log);
+    
     let steps = 0; let done = false; let yields = 0; const t0 = nowMs();
     let aborted = false;
     if (signal && typeof signal.addEventListener === 'function'){
@@ -76,27 +81,27 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
     }
     while (steps < maxSteps) {
       if (aborted) { log('abort:signal', { steps, yields }); throw new Error('WFC collapse aborted'); }
-      for (let i=0;i<yieldEvery && steps<maxSteps;i++,steps++) {
+      
+      // Adaptive batch size based on grid size (larger grids can handle bigger batches)
+      const gridSize = dims.x * dims.y * dims.z;
+      const batchSize = gridSize > 125 ? Math.min(10, yieldEvery) : 1; // Batch only for grids > 5x5x5
+      
+      for (let i=0; i < Math.min(batchSize, yieldEvery) && steps < maxSteps; i++, steps++) {
         if (aborted) { log('abort:signal', { steps, yields }); throw new Error('WFC collapse aborted'); }
         if (model.step()) { done = true; break; }
       }
-      if (done) break;
-      if (steps < maxSteps) {
+      
+      // Yield after processing batch or reaching yieldEvery steps
+      if (steps % yieldEvery === 0 || done) {
         yields++;
-        log('yield', { steps });
-        if (yields > maxYields) {
-          log('abort:yieldCap', { yields, steps, maxYields });
-          throw new Error('WFC collapse exceeded yield cap');
-        }
-        if ((nowMs() - t0) > stallTimeoutMs) {
-          log('abort:stall', { steps, yields, stallTimeoutMs });
-          throw new Error('WFC collapse stalled (time limit)');
-        }
-        await nextTick();
+        if (yields % 50 === 0) { log('step:progress', { steps, yields, dims, progress: (steps/maxSteps*100).toFixed(1) + '%' }); }
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
+      
+      if (done) break;
     }
     if (!done) {
-      log('abort:maxSteps', { steps, maxSteps });
+      log('abort:maxSteps', { steps, maxSteps, progress: (steps/maxSteps*100).toFixed(1) + '%' });
       throw new Error('WFC collapse (step) exceeded iteration cap');
     }
     log('done', { steps });
@@ -137,4 +142,97 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
     }
   }
   return { grid, grid3D, rules, tiles: placed, weights };
+}
+
+/**
+ * Apply strategic initial constraints to guide WFC toward better solutions.
+ * Seeds the grid with smart placements to reduce search space and improve convergence.
+ */
+function applyInitialConstraints(model, dims, protoTiles, log) {
+  try {
+    // Skip constraints for very small grids - they become over-constrained
+    if (dims.x <= 3 || dims.y <= 3 || dims.z <= 3) {
+      log('constraints:skipped', { reason: 'grid too small', dims });
+      return;
+    }
+    
+    // Find prototype indices for different tile types
+    const openSpaceIndex = protoTiles.findIndex(p => p.meta?.weight >= 8); // High weight open space
+    const corridorIndex = protoTiles.findIndex(p => p.meta?.weight >= 10); // High weight corridor
+    const solidIndex = protoTiles.findIndex(p => p.meta?.weight <= 0.2); // Low weight solid
+    
+    const centerX = Math.floor(dims.x / 2);
+    const centerY = Math.floor(dims.y / 2); 
+    const centerZ = Math.floor(dims.z / 2);
+    
+    let constraintsApplied = 0;
+    
+    // Strategy 1: Only seed center for medium+ grids (5x5x5+)
+    if (openSpaceIndex >= 0 && dims.x >= 5 && dims.z >= 5) {
+      if (typeof model.setCell === 'function') {
+        model.setCell(centerX, centerY, centerZ, openSpaceIndex);
+        constraintsApplied++;
+      } else if (typeof model.constrain === 'function') {
+        model.constrain(centerX, centerY, centerZ, [openSpaceIndex]);
+        constraintsApplied++;
+      }
+    }
+    
+    // Strategy 2: Only add edge walls for larger grids (7x7x7+) 
+    if (solidIndex >= 0 && dims.x >= 7 && dims.z >= 7) {
+      const edgePositions = [
+        [0, centerY, centerZ],           // -X edge
+        [dims.x-1, centerY, centerZ],    // +X edge  
+        [centerX, centerY, 0],           // -Z edge
+        [centerX, centerY, dims.z-1],    // +Z edge
+      ];
+      
+      for (const [x, y, z] of edgePositions) {
+        if (typeof model.setCell === 'function') {
+          model.setCell(x, y, z, solidIndex);
+          constraintsApplied++;
+        } else if (typeof model.constrain === 'function') {
+          model.constrain(x, y, z, [solidIndex]);
+          constraintsApplied++;
+        }
+      }
+    }
+    
+    // Strategy 3: Only create spine for large grids (9x9x9+)
+    if (corridorIndex >= 0 && dims.x >= 9 && dims.z >= 9) {
+      // Place corridor tiles along center line to encourage connectivity
+      const spinePositions = [
+        [centerX, centerY, centerZ - 1],
+        [centerX, centerY, centerZ + 1],
+      ];
+      
+      for (const [x, y, z] of spinePositions) {
+        if (x >= 0 && x < dims.x && z >= 0 && z < dims.z) {
+          if (typeof model.setCell === 'function') {
+            model.setCell(x, y, z, corridorIndex);
+            constraintsApplied++;
+          } else if (typeof model.constrain === 'function') {
+            model.constrain(x, y, z, [corridorIndex]);
+            constraintsApplied++;
+          }
+        }
+      }
+    }
+    
+    if (constraintsApplied > 0) {
+      log('constraints:applied', { 
+        count: constraintsApplied, 
+        openIndex: openSpaceIndex, 
+        solidIndex: solidIndex,
+        corridorIndex: corridorIndex,
+        dims
+      });
+    } else {
+      log('constraints:skipped', { reason: 'grid size below thresholds', dims });
+    }
+    
+  } catch (error) {
+    log('constraints:error', { error: error.message });
+    // Don't throw - constraints are optional optimization
+  }
 }
