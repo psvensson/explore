@@ -94,6 +94,14 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
       // Yield after processing batch or reaching yieldEvery steps
       if (steps % yieldEvery === 0 || done) {
         yields++;
+        if (yields > maxYields) {
+          log('abort:yieldCap', { yields, steps, maxYields });
+          throw new Error('WFC collapse exceeded yield cap');
+        }
+        if ((nowMs() - t0) > stallTimeoutMs) {
+          log('abort:stall', { steps, yields, stallTimeoutMs });
+          throw new Error('WFC collapse stalled (time limit)');
+        }
         if (yields % 50 === 0) { log('step:progress', { steps, yields, dims, progress: (steps/maxSteps*100).toFixed(1) + '%' }); }
         await new Promise(resolve => setTimeout(resolve, 0));
       }

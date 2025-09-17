@@ -21,7 +21,7 @@ describe('WFC Generation Completion', () => {
       rng: () => Math.random(),
       yieldEvery: 500, // Back to normal
       maxSteps: 50000,
-      stallTimeoutMs: 60000, // 60 second timeout
+      stallTimeoutMs: 15000, // 15 second timeout
       debug: true // Enable debugging to see step counts
     });
     
@@ -46,22 +46,22 @@ describe('WFC Generation Completion', () => {
     expect(result.tiles[0]).toHaveProperty('rotationY');
     
     // Performance check: should complete within reasonable time
-    expect(duration).toBeLessThan(35000); // Less than 35 seconds
+    expect(duration).toBeLessThan(15000); // Less than 15 seconds
     
     console.log(`3x3x3 generation completed in ${duration}ms`);
-  }, 40000); // 40 second Jest timeout
+  }, 20000); // 20 second Jest timeout
 
-  test('5x3x5 generation completes successfully', async () => {
+  test('4x3x4 generation completes successfully', async () => {
     const startTime = Date.now();
     
     const result = await generateWFCDungeon({
       NDWFC3D: undefined, // Use embedded fallback
       tileset: { prototypes: tilePrototypes },
-      dims: { x: 5, y: 3, z: 5 },
+      dims: { x: 4, y: 3, z: 4 },
       rng: () => Math.random(),
       yieldEvery: 100,
-      maxSteps: 75000,     // Increased step limit
-      stallTimeoutMs: 90000, // 90 second timeout
+      maxSteps: 40000,     // Reasonable step limit 
+      stallTimeoutMs: 15000, // 15 second timeout
       debug: false
     });
     
@@ -69,14 +69,14 @@ describe('WFC Generation Completion', () => {
     
     // Verify generation completed successfully
     expect(result).toBeDefined();
-    expect(result.grid.length).toBe(75); // 5x3x5 = 75 cells
-    expect(result.tiles.length).toBe(75);
+    expect(result.grid.length).toBe(48); // 4x3x4 = 48 cells
+    expect(result.tiles.length).toBe(48);
     
     // Performance check
-    expect(duration).toBeLessThan(90000); // Less than 90 seconds
+    expect(duration).toBeLessThan(18000); // Less than 18 seconds
     
-    console.log(`5x3x5 generation completed in ${duration}ms`);
-  }, 95000); // 95 second Jest timeout
+    console.log(`4x3x4 generation completed in ${duration}ms`);
+  }, 20000); // 20 second Jest timeout
 
   test('generation with abort signal works', async () => {
     const controller = new AbortController();

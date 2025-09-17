@@ -17,9 +17,9 @@ test('generator aborts on stall by yield cap', async () => {
     { id:0, tileId:1, voxels:new Array(27).fill(0), size:[3,3,3], transforms:[], meta:{ weight:1 } },
     { id:1, tileId:2, voxels:new Array(27).fill(1), size:[3,3,3], transforms:[], meta:{ weight:1 } }
   ] };
-  await expect(generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery: 10, maxSteps: 100000, maxYields: 3 }))
+  await expect(generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery: 2, maxSteps: 100000, maxYields: 2 }))
     .rejects.toThrow(/yield cap|stalled|iteration cap/);
-});
+}, 5000); // 5 second timeout
 
 test('generator aborts on stall by time limit', async () => {
   const NDWFC3D = function(){ return new NeverEndingModel(); };
@@ -28,6 +28,6 @@ test('generator aborts on stall by time limit', async () => {
     { id:0, tileId:1, voxels:new Array(27).fill(0), size:[3,3,3], transforms:[], meta:{ weight:1 } },
     { id:1, tileId:2, voxels:new Array(27).fill(1), size:[3,3,3], transforms:[], meta:{ weight:1 } }
   ] };
-  await expect(generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery: 10, maxSteps: 100000, stallTimeoutMs: 5 }))
+  await expect(generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery: 2, maxSteps: 100000, stallTimeoutMs: 100 }))
     .rejects.toThrow(/stalled|yield cap|iteration cap/);
-});
+}, 5000); // 5 second timeout
