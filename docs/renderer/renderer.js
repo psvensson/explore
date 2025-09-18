@@ -56,11 +56,11 @@ export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   attachPublicAPIs(instance); // adds generation & utility hooks
   lastInstance=instance; setInstanceRef(instance); // Set lastInstance BEFORE starting loop
   console.log('[Render] Instance created and set as lastInstance', { instance: !!instance });
-  startLoop({renderer, controls, fps, orbitCamera, instance});
+  startLoop({renderer, controls, fps, orbitCamera, instance, keyState});
   return instance;
 }
 
-function startLoop({renderer, controls, fps, orbitCamera, instance}){
+function startLoop({renderer, controls, fps, orbitCamera, instance, keyState}){
   let last = performance && performance.now ? performance.now(): Date.now();
   let frameCount = 0;
   console.log('[Render] Starting render loop', { instance: !!instance, lastInstance: !!lastInstance });
@@ -74,7 +74,7 @@ function startLoop({renderer, controls, fps, orbitCamera, instance}){
     const now=performance&&performance.now?performance.now():Date.now(); 
     const dt=Math.min(0.1,(now-last)/1000); 
     last=now; 
-    updateFPS(dt,fps, instance._keyState); 
+    updateFPS(dt, fps, keyState); 
     controls.update(); 
     renderer.render(instance.scene, fps.mode==='fps'?fps.cam:orbitCamera);
     // Log occasionally to show render loop is working
@@ -90,7 +90,18 @@ function wireInput({controls, fps, renderer, keyState, orbitCamera}){
   function resize(){ const c=renderer.domElement.parentElement; const w=c.clientWidth||window.innerWidth; const h=c.clientHeight||window.innerHeight; orbitCamera.aspect=w/h; orbitCamera.updateProjectionMatrix(); fps.cam.aspect=w/h; fps.cam.updateProjectionMatrix(); renderer.setSize(w,h); }
   window.addEventListener('resize', resize);
   if (isTest) return;
-  window.addEventListener('keydown', e=>{ keyState[e.code]=true; if(e.code==='KeyF'){ toggleMode(fps, orbitCamera, controls); if(fps.mode==='fps') lockPointer(renderer); else unlockPointer(); } });
+  window.addEventListener('keydown', e=>{ 
+    keyState[e.code]=true; 
+    // Debug log for movement keys
+    if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','Space','ShiftLeft','ShiftRight'].includes(e.code) && fps.mode === 'fps') {
+      console.log(`[Controls] Key pressed: ${e.code} (FPS mode)`);
+    }
+    if(e.code==='KeyF'){ 
+      toggleMode(fps, orbitCamera, controls); 
+      if(fps.mode==='fps') lockPointer(renderer); 
+      else unlockPointer(); 
+    } 
+  });
   window.addEventListener('keyup', e=>{ keyState[e.code]=false; });
   window.addEventListener('mousemove', e=> applyPointerLook(fps,e));
   renderer.domElement.addEventListener('click', ()=>{ if(fps.mode==='fps') lockPointer(renderer); });
