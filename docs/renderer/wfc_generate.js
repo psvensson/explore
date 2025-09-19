@@ -1,5 +1,6 @@
 // wfc_generate.js
 import { buildRules } from './wfc_rules.js';
+import { buildEdgePatternRules } from './edge_pattern_wfc_rules.js';
 import WFC from '../dungeon/ndwfc.js';
 
 // Lightweight debug helpers (no-op by default)
@@ -33,7 +34,9 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
   const dataSize = dims.x * dims.y * dims.z;
   const protoTiles = prototypes.map((p, i) => ({ ...p, index: i }));
   const transforms = symmetryTransforms || [];
-  const { rules, weights } = buildRules(protoTiles, { isolateStairs: true });
+  
+  // Use edge pattern based rules instead of openness heuristics
+  const { rules, weights } = buildEdgePatternRules(protoTiles, { isolateStairs: true });
   log('init', { dims, tiles: protoTiles.length, rules: rules.length, yieldEvery, maxSteps });
 
   // Defensive guard: empty tiles or rules indicate tileset not initialized or miswired

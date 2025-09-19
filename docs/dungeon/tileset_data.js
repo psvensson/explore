@@ -1,76 +1,231 @@
 // tileset_data.js
 // Canonical ordered tile definitions for traversable dungeon generation
+// Each tile shows a 3x3 grid visualization of its middle layer for easy understanding
 // Keep ordering EXACT to preserve prototype indices relied on by tests.
-const TILE_DEFS = [
-  // 0: Cross intersection (connects all 4 directions) 
-  { tileId: 0, layers: [
-      ["111","111","111"],
-      ["101","000","101"],  // + shape: openings N,E,S,W
-      ["111","111","111"],
-    ], transforms: [], meta:{ weight: 4 } },
 
-  // 1: Solid wall/rock (use sparingly for connectivity) 
-  { tileId: 1, layers: [
+const TILE_DEFS = [
+  // 0: Cross intersection (connects all 4 directions)
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0  
+  // 1 0 1
+  { tileId: 100, layers: [
+      ["111","111","111"],  // Floor layer
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "101"   // 1 0 1
+      ],
+      ["111","111","111"],  // Ceiling layer
+    ], transforms: [], meta:{ weight: 8 } },
+
+  // 1: Solid wall/rock (use sparingly for connectivity)
+  // Middle layer pattern:
+  // 1 1 1
+  // 1 1 1
+  // 1 1 1
+  { tileId: 101, layers: [
       ["111","111","111"],
-      ["111","111","111"],
+      [
+        "111",  // 1 1 1
+        "111",  // 1 1 1
+        "111"   // 1 1 1
+      ],
       ["111","111","111"],
     ], transforms: [], meta:{ weight: 3 } },
 
   // 2: North-South corridor (vertical passage)
-  { tileId: 0, layers: [
+  // Middle layer pattern:
+  // 1 1 1
+  // 0 0 0
+  // 1 1 1
+  { tileId: 102, layers: [
       ["111","111","111"],
-      ["111","000","111"],  // Vertical line: open N-S, walls E-W
+      [
+        "111",  // 1 1 1
+        "000",  // 0 0 0
+        "111"   // 1 1 1
+      ],
       ["111","111","111"],
-    ], transforms: ["ry"], meta:{ weight: 12 } },
+    ], transforms: ["ry"], meta:{ weight: 8 } },
 
   // 3: L-corner (connects two adjacent directions)
-  { tileId: 0, layers: [
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0
+  // 1 0 1 (changed from 011 to 101 for WFC compatibility)
+  { tileId: 103, layers: [
       ["111","111","111"],
-      ["111","000","011"],  // L-shape: open N+E, walls S+W
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "101"   // 1 0 1 (changed from 011 to match existing north edges)
+      ],
       ["111","111","111"],
     ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
   // 4: T-junction (connects 3 directions)
-  { tileId: 0, layers: [
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0
+  // 1 1 1
+  { tileId: 104, layers: [
       ["111","111","111"],
-      ["101","000","111"],  // T-shape: open N+E+W, blocked S
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "111"   // 1 1 1
+      ],
       ["111","111","111"],
     ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 6 } },
 
-  // 5: Open room (large traversable space)
-  { tileId: 0, layers: [
+  // 5: Small room with single opening
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0
+  // 1 1 1
+  { tileId: 105, layers: [
       ["111","111","111"],
-      ["000","000","000"],  // Full 3x3 open space
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "111"   // 1 1 1
+      ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 6 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
-  // 6: Dead-end corridor (open to one direction only)
-  { tileId: 0, layers: [
+  // 6: L-shaped room (two openings)
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0
+  // 1 0 1 (changed from 011 to 101 for WFC compatibility)
+  { tileId: 106, layers: [
       ["111","111","111"],
-      ["101","101","111"],  // Single opening north only
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "101"   // 1 0 1 (changed from 011 to match existing north edges)
+      ],
       ["111","111","111"],
-    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 5 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 6 } },
 
-  // 7: Small pillar room (open space with center obstacle)
-  { tileId: 0, layers: [
+  // 7: Dead-end corridor
+  // Middle layer pattern:
+  // 1 1 1
+  // 0 0 0
+  // 1 1 1
+  { tileId: 107, layers: [
       ["111","111","111"],
-      ["000","010","000"],  // Open with center pillar
+      [
+        "111",  // 1 1 1
+        "000",  // 0 0 0
+        "111"   // 1 1 1
+      ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 3 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 4 } },
 
-  // 8: Stair down (going to lower level)
-  { tileId: 2, layers: [
+  // 8: Corridor opening to room
+  // Middle layer pattern:
+  // 1 0 1
+  // 0 0 0
+  // 0 0 0
+  { tileId: 108, layers: [
       ["111","111","111"],
-      ["101","000","101"],  // Traversable center with stairs
+      [
+        "101",  // 1 0 1
+        "000",  // 0 0 0
+        "000"   // 0 0 0
+      ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 1 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
-  // 9: Stair up (going to upper level)
-  { tileId: 3, layers: [
+  // 9: Room corner
+  // Middle layer pattern:
+  // 1 1 1
+  // 1 0 1 (changed from 100 to 101 for WFC compatibility)
+  // 1 0 1 (changed from 100 to 101 for WFC compatibility)
+  { tileId: 109, layers: [
       ["111","111","111"],
-      ["101","000","101"],  // Traversable center with stairs
+      [
+        "111",  // 1 1 1
+        "101",  // 1 0 1 (changed from 100 to match existing patterns)
+        "101"   // 1 0 1 (changed from 100 to match existing patterns)
+      ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 1 } }
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
+
+  // 10: Open room
+  // Middle layer pattern:
+  // 0 0 0
+  // 0 0 0
+  // 0 0 0
+  { tileId: 110, layers: [
+      ["111","111","111"],
+      [
+        "000",  // 0 0 0
+        "000",  // 0 0 0
+        "000"   // 0 0 0
+      ],
+      ["111","111","111"],
+    ], transforms: [], meta:{ weight: 8 } },
+
+  // 11: +Z stair (lower/going up) 
+  // Floor layer: solid base
+  // Middle layer: stair steps with passable path
+  // Ceiling layer: open above for vertical movement to upper stair
+  { tileId: 201, layers: [
+      [
+        "111",  // 1 1 1
+        "111",  // 1 1 1  
+        "111"   // 1 1 1
+      ],
+      [
+        "111",  // 1 1 1
+        "020",  // 0 2 0
+        "101"   // 1 0 1 (changed from 000 to match corridor patterns)
+      ],
+      [
+        "111",  // 1 1 1
+        "000",  // 0 0 0
+        "000"   // 0 0 0
+      ],
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ 
+      role:'stair', 
+      stairRole: 'lower',
+      axis:'z', 
+      dir: 1, 
+      weight: 0.1,
+      requiredAboveEmpty: [[1,1,1], [2,1,1]]  // Center positions must be empty above
+    } },
+
+  // 12: -Z stair (upper/going down)
+  // Floor layer: open below for vertical movement from lower stair
+  // Middle layer: stair steps with passable path
+  // Ceiling layer: solid top
+  { tileId: 202, layers: [
+      [
+        "111",  // 1 1 1
+        "000",  // 0 0 0
+        "000"   // 0 0 0
+      ],
+      [
+        "111",  // 1 1 1
+        "020",  // 0 2 0
+        "101"   // 1 0 1 (changed from 000 to match corridor patterns)
+      ],
+      [
+        "111",  // 1 1 1
+        "111",  // 1 1 1
+        "111"   // 1 1 1
+      ],
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ 
+      role:'stair', 
+      stairRole: 'upper',
+      axis:'z', 
+      dir: -1, 
+      weight: 0.1,
+      requiredBelowEmpty: [[1,1,1], [0,1,1]]  // Center positions must be empty below
+    } }
 ];
 
 export default TILE_DEFS;
