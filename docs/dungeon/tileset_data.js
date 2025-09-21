@@ -153,7 +153,49 @@ const TILE_DEFS = [
         "000"   // 0 0 0
       ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 4 } },
+    ], transforms: [], meta:{ weight: 8 } },
+
+
+{ tileId: 111, layers: [
+      ["111","111","111"],
+      [
+        "000",  
+        "000",  
+        "000"   
+      ],
+      ["000","000","000"],
+    ], transforms: [], meta:{ weight: 8 } },
+
+    { tileId: 112, layers: [
+      ["111","111","111"],
+      [
+        "111",  
+        "000",  
+        "000"   
+      ],
+      ["000","000","000"],
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
+
+{ tileId: 113, layers: [
+      ["000","000","000"],
+      [
+        "000",  
+        "000",  
+        "000"   
+      ],
+      ["111","111","111"],
+    ], transforms: [], meta:{ weight: 8 } },
+    
+ { tileId: 114, layers: [
+      ["000","000","000"],
+      [
+        "111",  
+        "000",  
+        "000"   
+      ],
+      ["111","111","111"],
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
+
 
   // 11: +Z stair (lower/going up) 
   // Floor layer: solid base
