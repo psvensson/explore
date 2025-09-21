@@ -17,9 +17,9 @@ export function initUI(rootId = 'control-panel') {
   const sizeWrap = document.createElement('div');
   sizeWrap.style.marginTop='8px';
   // Renamed axes to semantic Width / Height / Length per user request
-  sizeWrap.innerHTML = '<label>Width <input id="wfc-size-x" type="number" value="3" min="1" style="width:60px"/></label> ' +
+  sizeWrap.innerHTML = '<label>Width <input id="wfc-size-x" type="number" value="6" min="1" style="width:60px"/></label> ' +
     '<label>Height <input id="wfc-size-y" type="number" value="3" min="1" style="width:60px"/></label> ' +
-    '<label>Length <input id="wfc-size-z" type="number" value="3" min="1" style="width:60px"/></label>';
+    '<label>Length <input id="wfc-size-z" type="number" value="6" min="1" style="width:60px"/></label>';
   controlPanel.appendChild(sizeWrap);
 
   // Advanced WFC options
@@ -33,7 +33,9 @@ export function initUI(rootId = 'control-panel') {
     '<label>yieldEvery <input id="wfc-yield-every" type="number" value="500" min="1" style="width:70px"/></label>',
     '<label>maxSteps <input id="wfc-max-steps" type="number" value="30000" min="100" style="width:70px"/></label>',
     '<label>stallTimeoutMs <input id="wfc-stall-timeout" type="number" value="60000" min="100" style="width:70px"/></label>',
-    '<label>maxYields <input id="wfc-max-yields" type="number" value="50" min="1" style="width:70px"/></label>'
+    '<label>maxYields <input id="wfc-max-yields" type="number" value="50" min="1" style="width:70px"/></label>',
+    '<label><input id="wfc-center-seed" type="checkbox" checked/> Center Seed</label>',
+    '<span style="font-size:10px;color:#666">Grow from center</span>'
   ].join(' ');
   controlPanel.appendChild(advWrap);
 
@@ -51,8 +53,9 @@ export function initUI(rootId = 'control-panel') {
     const maxSteps = parseInt(document.getElementById('wfc-max-steps').value,10);
     const stallTimeoutMs = parseInt(document.getElementById('wfc-stall-timeout').value,10);
     const maxYields = parseInt(document.getElementById('wfc-max-yields').value,10);
-    logAction(`generate-wfc-${sx}x${sy}x${sz}`);
-    if (window.generateWFCDungeon) window.generateWFCDungeon({x:sx,y:sy,z:sz, yieldEvery, maxSteps, stallTimeoutMs, maxYields});
+    const centerSeed = document.getElementById('wfc-center-seed').checked;
+    logAction(`generate-wfc-${sx}x${sy}x${sz}${centerSeed ? '-centered' : ''}`);
+    if (window.generateWFCDungeon) window.generateWFCDungeon({x:sx,y:sy,z:sz, yieldEvery, maxSteps, stallTimeoutMs, maxYields, centerSeed});
   });
   const cancelButton = document.createElement('button');
   cancelButton.innerText = 'Cancel';

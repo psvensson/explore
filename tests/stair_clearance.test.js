@@ -26,7 +26,7 @@ describe('Simplified stair system', ()=>{
   test('simplified canStack allows flexible stair connections', ()=>{
     // Find stair and non-stair tiles
     const stairTile = tilePrototypes.find(p=> p.meta && p.meta.role === 'stair');
-    const nonStairTile = tilePrototypes.find(p=> p.tileId === 1); // basic solid tile
+    const nonStairTile = tilePrototypes.find(p=> p.tileId === 100); // basic solid tile
     
     expect(stairTile).toBeDefined();
     expect(nonStairTile).toBeDefined();

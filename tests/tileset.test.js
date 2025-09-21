@@ -21,7 +21,7 @@ describe('tileset', () => {
 
   test('initializes expected number of prototypes and registers each', () => {
     const info = initializeTileset();
-    // After adding directional stair variants plus open landing tile we now expect 13 prototypes.
+    // Full tileset restored to 13 prototypes.
     expect(tilePrototypes.length).toBe(13);
     expect(protoTileIds.length).toBe(13);
     expect(global.NDWFC3D.callCount()).toBe(13);
@@ -61,33 +61,32 @@ describe('tileset', () => {
     expect(any.transforms).toEqual(["ry","ry+ry","ry+ry+ry"]);
   });
 
-  test('directional stair prototypes exist with expected forward-face openness', () => {
+  test('directional stair prototypes exist with expected connectivity openings', () => {
     initializeTileset();
     const stairs = tilePrototypes.filter(p => p.meta && p.meta.role === 'stair');
-    expect(stairs.length).toBe(4); // +Z, -Z, +X, -X
-    function middleFaceOpen(proto, face){
+    expect(stairs.length).toBe(2); // 2 base stairs: lower (+Z) and upper (-Z), transforms handle rotations
+    
+    // Check that stairs have the expected openings for connectivity
+    function hasConnectivityOpening(proto){
       const v = proto.voxels;
-      if (face==='posZ') return v[2][1][1] === 0;
-      if (face==='negZ') return v[0][1][1] === 0;
-      if (face==='posX') return v[1][1][2] === 0;
-      if (face==='negX') return v[1][1][0] === 0;
-      return true;
+      // Both stairs should have opening in their bottom row middle layer (for horizontal connectivity)
+      // This corresponds to middle vertical layer (y=1), bottom z row (z=2), center x (x=1)
+      return v[2][1][1] === 0; // bottom row, middle layer, center position
     }
+    
     for (const stair of stairs){
-      const { axis, dir } = stair.meta;
-      if (axis==='z'){
-        if (dir===1){
-          // forward +Z => neighbor face is -Z of neighbor, so stair's +Z face should be mostly open at mid boundary (its own far layer should have empties)
-          expect(middleFaceOpen(stair, 'posZ')).toBe(true);
-        } else {
-          expect(middleFaceOpen(stair, 'negZ')).toBe(true);
-        }
-      } else if (axis==='x') {
-        if (dir===1){
-          expect(middleFaceOpen(stair, 'posX')).toBe(true);
-        } else {
-          expect(middleFaceOpen(stair, 'negX')).toBe(true);
-        }
+      const { axis, dir, stairRole } = stair.meta;
+      expect(axis).toBe('z'); // Both our stairs are Z-axis
+      expect(hasConnectivityOpening(stair)).toBe(true);
+      
+      if (stairRole === 'lower') {
+        expect(dir).toBe(1);
+        // Lower stair should have open ceiling for vertical connection
+        expect(stair.voxels[1][2][1]).toBe(0); // center top should be open
+      } else if (stairRole === 'upper') {
+        expect(dir).toBe(-1);
+        // Upper stair should have open floor for vertical connection  
+        expect(stair.voxels[1][0][1]).toBe(0); // center bottom should be open
       }
     }
   });
@@ -96,7 +95,7 @@ describe('tileset', () => {
     expect(() => createTileFormLayers([
       ["000","000","000"],
       ["000","000","000"]
-    ], 0, { transforms: [] })).toThrow(/3 z-layers/);
+    ], 0, { transforms: [] })).toThrow(/Expected 3 layers/);
   });
 
   test('rejects invalid voxel character', () => {

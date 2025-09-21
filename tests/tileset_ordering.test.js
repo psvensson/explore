@@ -13,7 +13,7 @@ describe('tileset ordering stability', () => {
     const ts = initializeTileset();
     const man = tilesetManifest(ts);
     // If TILE_DEFS changes shape/order intentionally, update expectedHash.
-  const expectedHash = 4035304412; // updated snapshot after adding weights/meta
+  const expectedHash = 364703284; // updated after full tileset restoration + stair weight changes
     expect(manifestHash(man)).toBe(expectedHash);
     // Additional sanity: ids are sequential starting at 0
     expect(man.every((m,i)=>m.id===i)).toBe(true);

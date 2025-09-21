@@ -28,16 +28,32 @@ const nextTick = () => new Promise(res => {
 
 // Generate a dungeon using the incremental NDWFC API (expand + step loop).
 // Adapts previous model.run() expectation to the existing ndwfc.js engine.
-export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=60000, maxYields=Infinity, signal, debug } ) {
+export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=60000, maxYields=Infinity, signal, debug, centerSeed=true } ) {
   const log = makeLogger('WFC', debug);
   const { prototypes, symmetryTransforms } = tileset;
   const dataSize = dims.x * dims.y * dims.z;
   const protoTiles = prototypes.map((p, i) => ({ ...p, index: i }));
   const transforms = symmetryTransforms || [];
   
+  // Create initial wave with optional center seeding
+  let initialWave = {};
+  if (centerSeed) {
+    const centerX = Math.floor(dims.x / 2);
+    const centerY = Math.floor(dims.y / 2);
+    const centerZ = Math.floor(dims.z / 2);
+    
+    // Find a good starter tile (cross intersection for connectivity)
+    const starterTileIndex = protoTiles.findIndex(p => p.tileId === 100); // Cross intersection
+    if (starterTileIndex >= 0) {
+      const centerKey = `${centerX},${centerY},${centerZ}`;
+      initialWave[centerKey] = starterTileIndex;
+      log('center-seed', { x: centerX, y: centerY, z: centerZ, tileIndex: starterTileIndex, tileId: 100 });
+    }
+  }
+  
   // Use edge pattern based rules instead of openness heuristics
   const { rules, weights } = buildEdgePatternRules(protoTiles, { isolateStairs: true });
-  log('init', { dims, tiles: protoTiles.length, rules: rules.length, yieldEvery, maxSteps });
+  log('init', { dims, tiles: protoTiles.length, rules: rules.length, yieldEvery, maxSteps, centerSeed });
 
   // Defensive guard: empty tiles or rules indicate tileset not initialized or miswired
   if (!protoTiles.length) {
@@ -55,14 +71,14 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
   let model = null;
   let ctorError = null;
   if (NDWFC3D) {
-    try { model = new NDWFC3D({ nd: 3, weights, rules, wave: {} }); } catch(e){ ctorError = e; log('ctor-error', String(e)); }
+    try { model = new NDWFC3D({ nd: 3, weights, rules, wave: initialWave }); } catch(e){ ctorError = e; log('ctor-error', String(e)); }
   }
   // If NDWFC3D was a registration function (not a constructor) model may be undefined or missing methods.
   const hasExpand = model && typeof model.expand === 'function' && typeof model.step === 'function';
   const hasRun = model && typeof model.run === 'function';
   if (!hasExpand && !hasRun) {
     // Fallback: direct use of embedded WFC implementation.
-    model = new WFC({ nd:3, weights, rules, wave:{} });
+    model = new WFC({ nd:3, weights, rules, wave: initialWave });
   }
   log('api', { path: hasExpand? 'incremental' : (hasRun? 'legacy-run' : 'embedded') });
 

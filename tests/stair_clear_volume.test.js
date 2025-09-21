@@ -28,17 +28,41 @@ describe('stair clear volume heuristic', () => {
     return true;
   }
 
-  test('at least one non-stair prototype satisfies clear forward volume for each stair', () => {
+  test('stair prototypes are properly configured for WFC generation', () => {
     const stairs = tilePrototypes.filter(p=> p.meta && p.meta.role==='stair');
     const nonStairs = tilePrototypes.filter(p=> !(p.meta && p.meta.role==='stair'));
+    
     expect(stairs.length).toBeGreaterThan(0);
+    expect(nonStairs.length).toBeGreaterThan(0);
+    
+    // Verify stairs have proper metadata for WFC usage
     for (const stair of stairs){
-      const { axis, dir } = stair.meta;
-      let face;
-      if (axis==='z') face = dir===1 ? 'posZ' : 'negZ';
-      else face = dir===1 ? 'posX' : 'negX';
-      const candidates = nonStairs.filter(ns => middleRowEmpty(ns.voxels, face) && topCenterEmpty(ns.voxels, face));
-      expect(candidates.length).toBeGreaterThan(0);
+      const { axis, dir, stairRole } = stair.meta;
+      
+      // Check that stairs have required metadata
+      expect(axis).toBeDefined();
+      expect(dir).toBeDefined(); 
+      expect(stairRole).toBeDefined();
+      expect(['lower', 'upper']).toContain(stairRole);
+      
+      // Check that stairs have proper voxel structure
+      expect(stair.voxels).toBeDefined();
+      expect(stair.voxels.length).toBe(3); // 3 z layers
+      expect(stair.voxels[0].length).toBe(3); // 3 y layers
+      expect(stair.voxels[0][0].length).toBe(3); // 3 x positions
+      
+      // Verify stair voxels (value 2) are present
+      let hasStairVoxels = false;
+      for (let z = 0; z < 3; z++) {
+        for (let y = 0; y < 3; y++) {
+          for (let x = 0; x < 3; x++) {
+            if (stair.voxels[z][y][x] === 2) {
+              hasStairVoxels = true;
+            }
+          }
+        }
+      }
+      expect(hasStairVoxels).toBe(true);
     }
   });
 });

@@ -59,16 +59,54 @@ export function buildEdgePatternRules(tilePrototypes, { isolateStairs = true } =
   };
 
   // Extract edge patterns for all tiles
-  const tileEdges = tilePrototypes.map(proto => {
-    if (!proto || !proto.voxels) return null;
+  const tileEdges = tilePrototypes.map((proto, index) => {
+    if (!proto) {
+      console.warn(`Tile prototype ${index} is null/undefined`);
+      return null;
+    }
     
-    // Convert voxels back to layers format for edge extraction
+    if (!proto.voxels) {
+      console.warn(`Tile prototype ${index} (tileId: ${proto.tileId}) has no voxels`);
+      return null;
+    }
+    
+    // Handle both flat array (legacy) and 3D array formats
+    let voxels3D;
+    if (Array.isArray(proto.voxels) && typeof proto.voxels[0] === 'number') {
+      // Flat array format - convert to 3D
+      if (proto.voxels.length !== 27) {
+        console.warn(`Tile prototype ${index} (tileId: ${proto.tileId}) has flat voxels array with wrong length: ${proto.voxels.length}`);
+        return null;
+      }
+      voxels3D = [];
+      for (let z = 0; z < 3; z++) {
+        voxels3D[z] = [];
+        for (let y = 0; y < 3; y++) {
+          voxels3D[z][y] = [];
+          for (let x = 0; x < 3; x++) {
+            voxels3D[z][y][x] = proto.voxels[z * 9 + y * 3 + x];
+          }
+        }
+      }
+    } else if (Array.isArray(proto.voxels) && proto.voxels.length === 3) {
+      // Already 3D format
+      voxels3D = proto.voxels;
+    } else {
+      console.warn(`Tile prototype ${index} (tileId: ${proto.tileId}) has unrecognized voxels format`);
+      return null;
+    }
+    
+    // Convert voxels to layers format for edge extraction
     const layers = [[], [], []]; // [floor, middle, ceiling]
     for (let y = 0; y < 3; y++) {
       for (let z = 0; z < 3; z++) {
         let row = '';
         for (let x = 0; x < 3; x++) {
-          row += proto.voxels[z][y][x].toString();
+          if (!voxels3D[z] || !voxels3D[z][y] || voxels3D[z][y][x] === undefined) {
+            console.warn(`Tile prototype ${index} (tileId: ${proto.tileId}) missing voxel at [${z}][${y}][${x}]`);
+            return null;
+          }
+          row += voxels3D[z][y][x].toString();
         }
         layers[y].push(row);
       }

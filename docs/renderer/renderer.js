@@ -123,7 +123,7 @@ function attachPublicAPIs(instance){
 function exposeGeneration(instance){
   let currentAbort = null;
   window.cancelWFCDungeon = ()=>{ if (currentAbort) { try{ currentAbort.abort(); }catch(_){} } };
-  window.generateWFCDungeon = async ({x=3,y=3,z=3, yieldEvery=500, maxSteps=30000, stallTimeoutMs=10000, maxYields=50}={})=>{
+  window.generateWFCDungeon = async ({x=3,y=3,z=3, yieldEvery=500, maxSteps=30000, stallTimeoutMs=10000, maxYields=50, centerSeed=true}={})=>{
     try {
       const [tilesetMod, meshUtil] = await Promise.all([
         import('../dungeon/tileset.js'), import('./wfc_tile_mesh.js')
@@ -145,7 +145,8 @@ function exposeGeneration(instance){
     stallTimeoutMs,
     maxYields,
     signal: currentAbort.signal,
-    debug: (typeof window.__WFC_DEBUG__==='boolean') ? window.__WFC_DEBUG__ : undefined
+    debug: (typeof window.__WFC_DEBUG__==='boolean') ? window.__WFC_DEBUG__ : undefined,
+    centerSeed
   });
   buildAscii(grid3D); buildBrowser(tiles, protos, meshUtil); instance.lastTiles = tiles.map(t=>({...t,tileId:protos[t.prototypeIndex].tileId}));
       const THREERef = instance.THREE || window.THREE; setupMiniViewer(tiles, meshUtil, THREERef); const group = buildMeshGroup(tiles, protos, meshUtil, THREERef);

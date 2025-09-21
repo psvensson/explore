@@ -2,18 +2,31 @@
 // Functions to analyze tile connectivity and traversability in generated maps
 
 /**
- * Extract traversable positions from a 3D voxel grid
+ * Extract traversable positions from a 3D voxel grid, with boundary awareness
  * @param {number[][][]} grid3D - Grid in format [z][y][x] where y is vertical
+ * @param {Object} options - Options including boundary handling
  * @returns {Set<string>} Set of "x,y,z" position strings for traversable spaces
  */
-export function extractTraversableSpaces(grid3D) {
+export function extractTraversableSpaces(grid3D, options = {}) {
+  const { excludeBoundaryEdges = false } = options;
   const traversable = new Set();
   
-  for (let z = 0; z < grid3D.length; z++) {
-    for (let y = 0; y < grid3D[z].length; y++) {
-      for (let x = 0; x < grid3D[z][y].length; x++) {
-        // A space is traversable if it's empty (0) in the middle layer (y=1)
-        if (y === 1 && grid3D[z][y][x] === 0) {
+  const maxZ = grid3D.length;
+  const maxY = grid3D[0]?.length || 0;
+  const maxX = grid3D[0]?.[0]?.length || 0;
+  
+  for (let z = 0; z < maxZ; z++) {
+    for (let y = 0; y < maxY; y++) {
+      for (let x = 0; x < maxX; x++) {
+        // Skip boundary edges if requested (to avoid "openings to nowhere")
+        if (excludeBoundaryEdges) {
+          const isAtEdge = (x === 0 || x === maxX - 1 || z === 0 || z === maxZ - 1);
+          if (isAtEdge) continue;
+        }
+        
+        const voxel = grid3D[z][y][x];
+        // A space is traversable if it's empty (0) or a stair (2)
+        if (voxel === 0 || voxel === 2) {
           traversable.add(`${x},${y},${z}`);
         }
       }
@@ -24,26 +37,40 @@ export function extractTraversableSpaces(grid3D) {
 }
 
 /**
- * Get adjacent positions for 4-directional movement (N,S,E,W)
+ * Get adjacent positions for movement (N,S,E,W,Up,Down)
  * @param {string} pos - Position string "x,y,z"
+ * @param {number[][][]} grid3D - Grid to check for valid stair connections
  * @returns {string[]} Array of adjacent position strings
  */
-export function getAdjacentPositions(pos) {
+export function getAdjacentPositions(pos, grid3D) {
   const [x, y, z] = pos.split(',').map(Number);
-  return [
+  const adjacent = [];
+  
+  // Horizontal movement (always allowed between traversable spaces)
+  adjacent.push(
     `${x},${y},${z-1}`, // North
     `${x},${y},${z+1}`, // South  
     `${x-1},${y},${z}`, // West
-    `${x+1},${y},${z}`, // East
-  ];
+    `${x+1},${y},${z}`  // East
+  );
+  
+  // Vertical movement (only allowed through stairs)
+  if (grid3D && grid3D[z] && grid3D[z][y] && grid3D[z][y][x] === 2) {
+    // This position has a stair, so vertical movement is possible
+    if (y > 0) adjacent.push(`${x},${y-1},${z}`); // Down
+    if (y < 2) adjacent.push(`${x},${y+1},${z}`); // Up
+  }
+  
+  return adjacent;
 }
 
 /**
  * Check if all traversable spaces are connected using flood-fill
  * @param {Set<string>} traversableSpaces - Set of traversable position strings
+ * @param {number[][][]} grid3D - Grid for checking stair connections
  * @returns {Object} Analysis result with connectivity info
  */
-export function analyzeConnectivity(traversableSpaces) {
+export function analyzeConnectivity(traversableSpaces, grid3D) {
   if (traversableSpaces.size === 0) {
     return {
       isFullyConnected: true,
@@ -74,8 +101,8 @@ export function analyzeConnectivity(traversableSpaces) {
       visited.add(pos);
       component.add(pos);
       
-      // Check all adjacent positions
-      for (const adjPos of getAdjacentPositions(pos)) {
+      // Check all adjacent positions (including vertical through stairs)
+      for (const adjPos of getAdjacentPositions(pos, grid3D)) {
         if (traversableSpaces.has(adjPos) && !visited.has(adjPos)) {
           queue.push(adjPos);
         }
@@ -126,9 +153,11 @@ export function generateConnectivityReport(analysis) {
  * Check connectivity for a generated WFC result
  * @param {Array} tiles - WFC tile results with position and prototypeIndex
  * @param {Array} tilePrototypes - Tile prototype definitions with voxels
+ * @param {Object} options - Options for connectivity analysis
  * @returns {Object} Connectivity analysis result
  */
-export function checkWFCConnectivity(tiles, tilePrototypes) {
+export function checkWFCConnectivity(tiles, tilePrototypes, options = {}) {
+  const { excludeBoundaryEdges = true } = options;
   if (!tiles || tiles.length === 0) {
     throw new Error('No tiles provided for connectivity analysis');
   }
@@ -169,8 +198,9 @@ export function checkWFCConnectivity(tiles, tilePrototypes) {
   }
   
   // Extract traversable spaces and analyze connectivity
-  const traversableSpaces = extractTraversableSpaces(grid3D);
-  const analysis = analyzeConnectivity(traversableSpaces);
+  // Use boundary-aware analysis to ignore edge "openings to nowhere"
+  const traversableSpaces = extractTraversableSpaces(grid3D, { excludeBoundaryEdges });
+  const analysis = analyzeConnectivity(traversableSpaces, grid3D);
   
   return {
     ...analysis,

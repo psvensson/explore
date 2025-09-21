@@ -32,7 +32,7 @@ const TILE_DEFS = [
         "111"   // 1 1 1
       ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 3 } },
+    ], transforms: [], meta:{ weight: 12 } },
 
   // 2: North-South corridor (vertical passage)
   // Middle layer pattern:
@@ -57,8 +57,8 @@ const TILE_DEFS = [
   { tileId: 103, layers: [
       ["111","111","111"],
       [
-        "101",  // 1 0 1
-        "000",  // 0 0 0
+        "111",  // 1 0 1
+        "100",  // 0 0 0
         "101"   // 1 0 1 (changed from 011 to match existing north edges)
       ],
       ["111","111","111"],
@@ -79,50 +79,36 @@ const TILE_DEFS = [
       ["111","111","111"],
     ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 6 } },
 
-  // 5: Small room with single opening
-  // Middle layer pattern:
-  // 1 0 1
-  // 0 0 0
-  // 1 1 1
-  { tileId: 105, layers: [
+     {tileId: 105, layers: [
       ["111","111","111"],
       [
-        "101",  // 1 0 1
+        "100",  // 1 0 1
         "000",  // 0 0 0
-        "111"   // 1 1 1
+        "000"   // 0 0 0
       ],
       ["111","111","111"],
     ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
-  // 6: L-shaped room (two openings)
-  // Middle layer pattern:
-  // 1 0 1
-  // 0 0 0
-  // 1 0 1 (changed from 011 to 101 for WFC compatibility)
-  { tileId: 106, layers: [
+  {tileId: 106, layers: [
       ["111","111","111"],
       [
-        "101",  // 1 0 1
-        "000",  // 0 0 0
-        "101"   // 1 0 1 (changed from 011 to match existing north edges)
+        "111",  // 1 0 1
+        "100",  // 0 0 0
+        "100"   // 0 0 0
       ],
       ["111","111","111"],
-    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 6 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
-  // 7: Dead-end corridor
-  // Middle layer pattern:
-  // 1 1 1
-  // 0 0 0
-  // 1 1 1
+
   { tileId: 107, layers: [
       ["111","111","111"],
       [
-        "111",  // 1 1 1
+        "111",  // 1 0 1
         "000",  // 0 0 0
-        "111"   // 1 1 1
+        "000"   // 0 0 0
       ],
       ["111","111","111"],
-    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 4 } },
+    ], transforms: ["ry","ry+ry","ry+ry+ry"], meta:{ weight: 8 } },
 
   // 8: Corridor opening to room
   // Middle layer pattern:
@@ -167,7 +153,7 @@ const TILE_DEFS = [
         "000"   // 0 0 0
       ],
       ["111","111","111"],
-    ], transforms: [], meta:{ weight: 8 } },
+    ], transforms: [], meta:{ weight: 4 } },
 
   // 11: +Z stair (lower/going up) 
   // Floor layer: solid base
@@ -194,7 +180,7 @@ const TILE_DEFS = [
       stairRole: 'lower',
       axis:'z', 
       dir: 1, 
-      weight: 0.1,
+      weight: 2.0,  // Increased from 0.1 to ensure vertical connectivity
       requiredAboveEmpty: [[1,1,1], [2,1,1]]  // Center positions must be empty above
     } },
 
@@ -223,7 +209,7 @@ const TILE_DEFS = [
       stairRole: 'upper',
       axis:'z', 
       dir: -1, 
-      weight: 0.1,
+      weight: 2.0,  // Increased from 0.1 to ensure vertical connectivity
       requiredBelowEmpty: [[1,1,1], [0,1,1]]  // Center positions must be empty below
     } }
 ];
