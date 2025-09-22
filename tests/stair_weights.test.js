@@ -39,8 +39,8 @@ describe('3D connectivity with increased stair weights', () => {
     console.log(`Stair probability: ${stairProbability.toFixed(1)}%`);
     
     // Before: 0.2 / 10.2 = 1.96%
-    // After: 4.0 / 90 = 4.44%
-    expect(stairProbability).toBeGreaterThan(4.0); // Should be significantly higher than 1.96%
+    // After with 17 tiles: 4.0 / 126 = 3.17%
+    expect(stairProbability).toBeGreaterThan(3.0); // Should be significantly higher than 1.96%
   });
 
   test('weight change represents 20x increase in stair likelihood', () => {

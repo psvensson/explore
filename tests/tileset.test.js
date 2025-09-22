@@ -21,20 +21,20 @@ describe('tileset', () => {
 
   test('initializes expected number of prototypes and registers each', () => {
     const info = initializeTileset();
-    // Full tileset restored to 13 prototypes.
-    expect(tilePrototypes.length).toBe(13);
-    expect(protoTileIds.length).toBe(13);
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    // Full tileset expanded to 17 prototypes including multi-level tiles.
+    expect(tilePrototypes.length).toBe(17);
+    expect(protoTileIds.length).toBe(17);
+    expect(global.NDWFC3D.callCount()).toBe(17);
     expect(info.emptyWithFloorProtoIdx).toBeGreaterThanOrEqual(0);
     expect(info.solidProtoIdx).toBeGreaterThan(info.emptyWithFloorProtoIdx);
   });
 
   test('idempotent initializeTileset does not duplicate', () => {
     initializeTileset();
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    expect(global.NDWFC3D.callCount()).toBe(17);
     initializeTileset();
-    expect(tilePrototypes.length).toBe(13);
-    expect(global.NDWFC3D.callCount()).toBe(13);
+    expect(tilePrototypes.length).toBe(17);
+    expect(global.NDWFC3D.callCount()).toBe(17);
   });
 
   test('solid cube prototype voxels all 1s', () => {

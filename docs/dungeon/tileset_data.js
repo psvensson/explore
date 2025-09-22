@@ -1,9 +1,15 @@
 // tileset_data.js
 // Canonical ordered tile definitions for traversable dungeon generation
-// Each tile shows a 3x3 grid visualization of its middle layer for easy understanding
-// Keep ordering EXACT to preserve prototype indices relied on by tests.
+// 
+// This file provides backward compatibility with the original tileset format
+// while also enabling the new modular tileset architecture.
+// 
+// IMPORTANT: Keep ordering EXACT to preserve prototype indices relied on by tests.
 
-const TILE_DEFS = [
+import { PackageResolver } from './package_resolver.js';
+
+// Legacy tile definitions (preserved for backward compatibility)
+const LEGACY_TILE_DEFS = [
   // 0: Cross intersection (connects all 4 directions)
   // Middle layer pattern:
   // 1 0 1
@@ -256,4 +262,182 @@ const TILE_DEFS = [
     } }
 ];
 
+// Modular tileset integration
+class TilesetData {
+  constructor() {
+    this.resolver = new PackageResolver();
+    this.currentPackage = 'standard_dungeon';
+    this.useModular = false;
+  }
+
+  /**
+   * Enable modular tileset system
+   */
+  enableModular(enabled = true) {
+    this.useModular = enabled;
+    return this;
+  }
+
+  /**
+   * Set the current tileset package
+   */
+  setPackage(packageName) {
+    this.currentPackage = packageName;
+    return this;
+  }
+
+  /**
+   * Get tiles using current configuration
+   */
+  getTiles() {
+    if (this.useModular) {
+      return this.getModularTiles();
+    } else {
+      return this.getLegacyTiles();
+    }
+  }
+
+  /**
+   * Get legacy tile format
+   */
+  getLegacyTiles() {
+    return [...LEGACY_TILE_DEFS];
+  }
+
+  /**
+   * Get modular tiles resolved to legacy format
+   */
+  getModularTiles() {
+    const resolved = this.resolver.resolve(this.currentPackage);
+    return this.convertToLegacyFormat(resolved);
+  }
+
+  /**
+   * Convert modular tiles to legacy format for backward compatibility
+   */
+  convertToLegacyFormat(modularTiles) {
+    return modularTiles.map((tile, index) => {
+      // Convert 3D structure to legacy layer format
+      const layers = this.structureToLayers(tile.structure);
+      
+      // Map role to legacy format
+      const meta = {
+        weight: tile.weight,
+        role: tile.role
+      };
+
+      // Add stair-specific metadata if applicable
+      if (tile.type === 'stair') {
+        meta.stairRole = tile.role === 'stair_up' ? 'lower' : 'upper';
+        meta.axis = 'z';
+        meta.dir = tile.role === 'stair_up' ? 1 : -1;
+        
+        if (tile.role === 'stair_up') {
+          meta.requiredAboveEmpty = [[1,1,1], [2,1,1]];
+        } else {
+          meta.requiredBelowEmpty = [[1,1,1], [0,1,1]];
+        }
+      }
+
+      return {
+        tileId: 100 + index, // Start from 100 to match legacy format
+        layers: layers,
+        transforms: this.getTransforms(tile.source ? tile.source.rotation : 0),
+        meta: meta
+      };
+    });
+  }
+
+  /**
+   * Convert modular structure to legacy layers format
+   */
+  structureToLayers(structure) {
+    if (structure.length === 1) {
+      // Single layer - add floor and ceiling
+      const middleLayer = structure[0];
+      return [
+        // Floor layer (solid)
+        middleLayer.map(row => row.map(() => "1").join("")),
+        // Middle layer (actual structure)
+        middleLayer.map(row => row.map(cell => cell.toString()).join("")),
+        // Ceiling layer (solid)
+        middleLayer.map(row => row.map(() => "1").join(""))
+      ];
+    } else if (structure.length === 2) {
+      // Two layers (stairs)
+      const [layer1, layer2] = structure;
+      return [
+        // Floor/lower layer
+        layer1.map(row => row.map(cell => cell.toString()).join("")),
+        // Middle layer
+        layer2.map(row => row.map(cell => cell === 1 ? "0" : cell.toString()).join("")),
+        // Ceiling layer
+        layer2.map(row => row.map(cell => cell.toString()).join(""))
+      ];
+    } else {
+      // Multiple layers - take first three
+      return structure.slice(0, 3).map(layer =>
+        layer.map(row => row.map(cell => cell.toString()).join(""))
+      );
+    }
+  }
+
+  /**
+   * Get transforms based on rotation
+   */
+  getTransforms(rotation) {
+    switch (rotation) {
+      case 0: return [];
+      case 90: return ["ry"];
+      case 180: return ["ry", "ry"];
+      case 270: return ["ry", "ry", "ry"];
+      default: return [];
+    }
+  }
+
+  /**
+   * Get available packages
+   */
+  getAvailablePackages() {
+    return this.resolver.resolve ? 
+      ['standard_dungeon', 'high_connectivity', 'minimal_clumping', 'multi_level_dungeon', 'room_heavy'] :
+      ['legacy'];
+  }
+
+  /**
+   * Get tileset statistics
+   */
+  getStats() {
+    if (this.useModular) {
+      const resolved = this.resolver.resolve(this.currentPackage);
+      return this.resolver.getStats(resolved);
+    } else {
+      return {
+        totalTiles: LEGACY_TILE_DEFS.length,
+        source: 'legacy'
+      };
+    }
+  }
+
+  /**
+   * Validate current tileset
+   */
+  validate() {
+    if (this.useModular) {
+      const resolved = this.resolver.resolve(this.currentPackage);
+      return this.resolver.validate(resolved);
+    } else {
+      return { isValid: true, errors: [], warnings: [] };
+    }
+  }
+}
+
+// Create singleton instance
+const tilesetData = new TilesetData();
+
+// Legacy exports for backward compatibility
+const TILE_DEFS = tilesetData.getLegacyTiles();
+
+// Modern exports
+export { TilesetData, tilesetData };
 export default TILE_DEFS;
