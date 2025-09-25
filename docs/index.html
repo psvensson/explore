@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Dungeon Web</title>
     <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/tileset_editor.css">
     <script type="importmap">
     {
       "imports": {
@@ -20,38 +21,54 @@
         <p>Explore and generate dungeons in a 3D environment.</p>
         <div id="header-version" style="position:absolute;top:10px;right:10px;background:#0f2740;color:#cfe6ff;padding:6px 10px;border-radius:6px;font-size:13px;font-weight:600;letter-spacing:0.3px">Version: loading…</div>
     </header>
+    <!-- Main Tab Navigation -->
+    <nav class="main-tab-nav">
+        <button id="main-3d-tab" class="main-tab-button active" data-main-tab="3d">3D Generation</button>
+        <button id="main-editor-tab" class="main-tab-button" data-main-tab="editor">Tileset Editor</button>
+    </nav>
+
     <main>
-        <section id="ui-controls">
-            <h2>Generator</h2>
-            <div id="control-panel"></div>
-                        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                            <button id="generate-stair-demo" style="flex:1 1 220px;">Generate Stair Demo</button>
-                        </div>
-            <p style="font-size:0.85em;color:#224;max-width:480px;line-height:1.2em;margin-top:8px">Press <strong>F</strong> to toggle FPS / Orbit camera. In FPS mode use <strong>W A S D</strong> to move, <strong>Q E</strong> to turn left/right, <strong>Space</strong> up, <strong>Shift</strong> down, and move the mouse to look around (click canvas to lock pointer).</p>
-            <!-- UI controls will be dynamically generated here -->
-        </section>
-        <section id="renderer">
-            <h2>View</h2>
-            <div id="threejs-canvas" style="width: 100%; height: 90vh; min-height:760px;"></div>
-        </section>
-                <section id="ascii-map-section">
-                        <h2>ASCII Map (Layers Low→High)</h2>
-                        <div class="ascii-mini-wrapper">
-                            <div class="ascii-panel">
-                                <pre id="ascii-map" class="ascii-map"></pre>
-                                <div class="legend">Legend: <code>.</code> empty, <code>#</code> solid, <code>v</code>/<code>^</code> stairs</div>
+        <!-- 3D View Tab Content -->
+        <div id="main-3d-pane" class="main-tab-pane active">
+            <section id="ui-controls">
+                <h2>Generator</h2>
+                <div id="control-panel"></div>
+                            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <button id="generate-stair-demo" style="flex:1 1 220px;">Generate Stair Demo</button>
                             </div>
-                            <div class="mini-panel">
-                                <div class="mini-header">
-                                    <strong>Selected Tiles Preview</strong>
-                                    <button id="clear-selected-tiles" class="mini-clear">Clear</button>
+                <p style="font-size:0.85em;color:#224;max-width:480px;line-height:1.2em;margin-top:8px">Press <strong>F</strong> to toggle FPS / Orbit camera. In FPS mode use <strong>W A S D</strong> to move, <strong>Q E</strong> to turn left/right, <strong>Space</strong> up, <strong>Shift</strong> down, and move the mouse to look around (click canvas to lock pointer).</p>
+                <!-- UI controls will be dynamically generated here -->
+            </section>
+            <section id="renderer">
+                <h2>View</h2>
+                <div id="threejs-canvas" style="width: 100%; height: 90vh; min-height:760px;"></div>
+            </section>
+                    <section id="ascii-map-section">
+                            <h2>ASCII Map (Layers Low→High)</h2>
+                            <div class="ascii-mini-wrapper">
+                                <div class="ascii-panel">
+                                    <pre id="ascii-map" class="ascii-map"></pre>
+                                    <div class="legend">Legend: <code>.</code> empty, <code>#</code> solid, <code>v</code>/<code>^</code> stairs</div>
                                 </div>
-                                <div id="mini-viewer" class="mini-viewer" tabindex="0" aria-label="Mini tile viewer (click to rotate, Esc to deselect)"></div>
-                                <div class="mini-hint">Click to focus, drag to rotate, wheel to zoom, Esc to deselect.</div>
+                                <div class="mini-panel">
+                                    <div class="mini-header">
+                                        <strong>Selected Tiles Preview</strong>
+                                        <button id="clear-selected-tiles" class="mini-clear">Clear</button>
+                                    </div>
+                                    <div id="mini-viewer" class="mini-viewer" tabindex="0" aria-label="Mini tile viewer (click to rotate, Esc to deselect)"></div>
+                                    <div class="mini-hint">Click to focus, drag to rotate, wheel to zoom, Esc to deselect.</div>
+                                </div>
                             </div>
-                        </div>
-                        <div id="tile-block-browser" class="tile-block-browser"></div>
-                </section>
+                            <div id="tile-block-browser" class="tile-block-browser"></div>
+                    </section>
+        </div>
+
+        <!-- Tileset Editor Tab Content -->
+        <div id="main-editor-pane" class="main-tab-pane">
+            <div id="tileset-editor-container">
+                <!-- Tileset editor will be loaded here -->
+            </div>
+        </div>
         <!-- Removed redundant classic generator section -->
     </main>
     <!-- Tileset module (NDWFC prototypes). NDWFC core dynamically imported on demand. -->

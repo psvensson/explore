@@ -401,4 +401,157 @@ export class PackageResolver {
         
         return diff;
     }
+
+    /**
+     * Resolves a custom configuration to WFC-compatible tileset
+     * @param {Object} customConfig - Custom configuration object
+     * @returns {Array} Resolved tileset array
+     */
+    resolveCustomConfig(customConfig) {
+        if (!customConfig || !Array.isArray(customConfig.tiles)) {
+            throw new Error('Invalid custom configuration: must have tiles array');
+        }
+
+        const resolved = [];
+        const processedTileIds = new Set();
+
+        for (const tileConfig of customConfig.tiles) {
+            try {
+                const tiles = this.resolveTileConfig(tileConfig);
+                
+                for (const tile of tiles) {
+                    if (processedTileIds.has(tile.tileId)) {
+                        console.warn(`Duplicate tile ID ${tile.tileId} in custom configuration`);
+                        continue;
+                    }
+                    processedTileIds.add(tile.tileId);
+                    resolved.push(tile);
+                }
+            } catch (error) {
+                console.error(`Failed to resolve tile configuration:`, tileConfig, error);
+                // Continue processing other tiles instead of failing completely
+            }
+        }
+
+        return resolved;
+    }
+
+    /**
+     * Resolves a single tile configuration to one or more tiles
+     * @param {Object} tileConfig - Single tile configuration
+     * @returns {Array} Array of resolved tiles
+     */
+    resolveTileConfig(tileConfig) {
+        const {
+            tileId,
+            structure_name,
+            weight_package,
+            role_package,
+            rotations = [],
+            custom_weight,
+            custom_role
+        } = tileConfig;
+
+        if (!tileId || !structure_name) {
+            throw new Error('Tile configuration must have tileId and structure_name');
+        }
+
+        const structure = TileStructures.get(structure_name);
+        if (!structure) {
+            throw new Error(`Unknown structure: ${structure_name}`);
+        }
+
+        // Determine weight
+        let weight;
+        if (custom_weight !== undefined) {
+            weight = custom_weight;
+        } else if (weight_package && weight_package !== 'custom') {
+            const weightData = TileMetadata.getWeightPackage(weight_package);
+            if (!weightData || !weightData[structure_name]) {
+                throw new Error(`No weight data for structure ${structure_name} in package ${weight_package}`);
+            }
+            weight = weightData[structure_name];
+        } else {
+            weight = 1.0; // Default weight
+        }
+
+        // Determine role
+        let role;
+        if (custom_role !== undefined) {
+            role = custom_role;
+        } else if (role_package && role_package !== 'custom') {
+            const roleData = TileMetadata.getRolePackage(role_package);
+            if (!roleData || !roleData[structure_name]) {
+                throw new Error(`No role data for structure ${structure_name} in package ${role_package}`);
+            }
+            role = roleData[structure_name];
+        } else {
+            role = 'corridor'; // Default role
+        }
+
+        // Create base tile - ensure WFC compatibility
+        const baseTile = {
+            tileId,
+            structure: structure.structure,
+            edges: structure.edges,
+            weight,
+            role,
+            type: structure.type || 'custom',
+            properties: {
+                structure_name,
+                role,
+                weight
+            },
+            source: {
+                structure_name,
+                weight_package: weight_package || 'custom',
+                role_package: role_package || 'custom',
+                custom: true
+            }
+        };
+
+        const tiles = [baseTile];
+
+        // Add rotations if requested
+        for (const rotation of rotations) {
+            if (![90, 180, 270].includes(rotation)) {
+                console.warn(`Invalid rotation ${rotation} for tile ${tileId}`);
+                continue;
+            }
+
+            const rotatedStructure = TileStructures.getRotated(structure_name, rotation);
+            if (!rotatedStructure) {
+                console.warn(`Failed to rotate structure ${structure_name} by ${rotation}°`);
+                continue;
+            }
+
+            // Generate a unique ID for the rotated tile
+            const rotatedTileId = tileId + rotation;
+            
+            tiles.push({
+                tileId: rotatedTileId,
+                structure: rotatedStructure.structure,
+                edges: rotatedStructure.edges,
+                weight,
+                role,
+                type: structure.type || 'custom',
+                properties: {
+                    structure_name: `${structure_name}_${rotation}`,
+                    role,
+                    weight,
+                    base_tile_id: tileId,
+                    rotation
+                },
+                source: {
+                    structure_name,
+                    weight_package: weight_package || 'custom',
+                    role_package: role_package || 'custom',
+                    rotation,
+                    custom: true
+                }
+            });
+        }
+
+        return tiles;
+    }
 }
