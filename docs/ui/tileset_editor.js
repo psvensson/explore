@@ -21,6 +21,7 @@ export class TilesetEditor {
         this.configManager = new TilesetConfigManager();
         this.currentView = 'overview';
         this.editors = {};
+        this.views = {}; // Cache for preserving view content
         
         this.initializeUI();
         this.showOverview();
@@ -81,8 +82,19 @@ export class TilesetEditor {
         this.updateNavigation('Tileset Editor');
         
         const content = document.getElementById('editor-content');
-        content.innerHTML = `
-            <div class="editor-overview">
+        
+        // Hide all editor views
+        Object.values(this.views).forEach(view => {
+            if (view && view.style) {
+                view.style.display = 'none';
+            }
+        });
+        
+        // Show or create overview
+        if (!this.views.overview) {
+            this.views.overview = document.createElement('div');
+            this.views.overview.className = 'editor-overview';
+            this.views.overview.innerHTML = `
                 <div class="overview-header">
                     <h2>🎯 Tileset Configuration System</h2>
                     <p>Build your tileset step by step, from basic structures to complete configurations</p>
@@ -159,21 +171,23 @@ export class TilesetEditor {
                 <div class="quick-actions">
                     <h3>Quick Actions</h3>
                     <div class="action-buttons">
-                        <button class="btn btn-primary" onclick="tilesetEditor.createQuickConfig()">
+                        <button class="btn btn-primary" onclick="window.mainTilesetEditor.createQuickConfig()">
                             🚀 Quick Start - Create Basic Configuration
                         </button>
-                        <button class="btn btn-secondary" onclick="tilesetEditor.importConfiguration()">
+                        <button class="btn btn-secondary" onclick="window.mainTilesetEditor.importConfiguration()">
                             📁 Import Configuration from JSON
                         </button>
-                        <button class="btn btn-info" onclick="tilesetEditor.showTutorial()">
+                        <button class="btn btn-info" onclick="window.mainTilesetEditor.showTutorial()">
                             📚 Show Tutorial
                         </button>
                     </div>
                 </div>
-            </div>
-        `;
-
-        this.updateStats();
+            `;
+            content.appendChild(this.views.overview);
+            this.updateStats();
+        }
+        
+        this.views.overview.style.display = 'block';
     }
 
     showStructureEditor() {
@@ -181,11 +195,28 @@ export class TilesetEditor {
         this.updateNavigation('Structure Editor');
         
         const content = document.getElementById('editor-content');
-        content.innerHTML = '<div id="structure-editor-container"></div>';
         
-        if (!this.editors.structure) {
-            this.editors.structure = new StructureEditor(document.getElementById('structure-editor-container'));
-            window.structureEditor = this.editors.structure;
+        // Hide all other views
+        Object.entries(this.views).forEach(([key, view]) => {
+            if (view && view.style) {
+                view.style.display = key === 'structures' ? 'block' : 'none';
+            }
+        });
+        
+        // Create structure editor view if it doesn't exist
+        if (!this.views.structures) {
+            this.views.structures = document.createElement('div');
+            this.views.structures.id = 'structure-editor-container';
+            this.views.structures.style.display = 'block';
+            content.appendChild(this.views.structures);
+            
+            // Initialize editor only once
+            if (!this.editors.structure) {
+                this.editors.structure = new StructureEditor(this.views.structures);
+                window.structureEditor = this.editors.structure;
+            }
+        } else {
+            this.views.structures.style.display = 'block';
         }
     }
 
@@ -194,11 +225,28 @@ export class TilesetEditor {
         this.updateNavigation('Metadata Package Editor');
         
         const content = document.getElementById('editor-content');
-        content.innerHTML = '<div id="metadata-editor-container"></div>';
         
-        if (!this.editors.metadata) {
-            this.editors.metadata = new MetadataEditor(document.getElementById('metadata-editor-container'));
-            window.metadataEditor = this.editors.metadata;
+        // Hide all other views
+        Object.entries(this.views).forEach(([key, view]) => {
+            if (view && view.style) {
+                view.style.display = key === 'metadata' ? 'block' : 'none';
+            }
+        });
+        
+        // Create metadata editor view if it doesn't exist
+        if (!this.views.metadata) {
+            this.views.metadata = document.createElement('div');
+            this.views.metadata.id = 'metadata-editor-container';
+            this.views.metadata.style.display = 'block';
+            content.appendChild(this.views.metadata);
+            
+            // Initialize editor only once
+            if (!this.editors.metadata) {
+                this.editors.metadata = new MetadataEditor(this.views.metadata);
+                window.metadataEditor = this.editors.metadata;
+            }
+        } else {
+            this.views.metadata.style.display = 'block';
         }
     }
 
@@ -207,14 +255,31 @@ export class TilesetEditor {
         this.updateNavigation('Tile Package Editor');
         
         const content = document.getElementById('editor-content');
-        content.innerHTML = '<div id="package-editor-container"></div>';
         
-        if (!this.editors.packages) {
-            this.editors.packages = new TilePackageEditor(
-                document.getElementById('package-editor-container'),
-                () => this.updateStats()
-            );
-            window.tilePackageEditor = this.editors.packages;
+        // Hide all other views
+        Object.entries(this.views).forEach(([key, view]) => {
+            if (view && view.style) {
+                view.style.display = key === 'packages' ? 'block' : 'none';
+            }
+        });
+        
+        // Create package editor view if it doesn't exist
+        if (!this.views.packages) {
+            this.views.packages = document.createElement('div');
+            this.views.packages.id = 'package-editor-container';
+            this.views.packages.style.display = 'block';
+            content.appendChild(this.views.packages);
+            
+            // Initialize editor only once
+            if (!this.editors.packages) {
+                this.editors.packages = new TilePackageEditor(
+                    this.views.packages,
+                    () => this.updateStats()
+                );
+                window.tilePackageEditor = this.editors.packages;
+            }
+        } else {
+            this.views.packages.style.display = 'block';
         }
         
         this.editors.packages.render();
@@ -225,14 +290,31 @@ export class TilesetEditor {
         this.updateNavigation('Configuration Editor');
         
         const content = document.getElementById('editor-content');
-        content.innerHTML = '<div id="configuration-editor-container"></div>';
         
-        if (!this.editors.configurations) {
-            this.editors.configurations = new ConfigurationEditor(
-                document.getElementById('configuration-editor-container'),
-                () => this.updateStats()
-            );
-            window.configurationEditor = this.editors.configurations;
+        // Hide all other views
+        Object.entries(this.views).forEach(([key, view]) => {
+            if (view && view.style) {
+                view.style.display = key === 'configurations' ? 'block' : 'none';
+            }
+        });
+        
+        // Create configuration editor view if it doesn't exist
+        if (!this.views.configurations) {
+            this.views.configurations = document.createElement('div');
+            this.views.configurations.id = 'configuration-editor-container';
+            this.views.configurations.style.display = 'block';
+            content.appendChild(this.views.configurations);
+            
+            // Initialize editor only once
+            if (!this.editors.configurations) {
+                this.editors.configurations = new ConfigurationEditor(
+                    this.views.configurations,
+                    () => this.updateStats()
+                );
+                window.configurationEditor = this.editors.configurations;
+            }
+        } else {
+            this.views.configurations.style.display = 'block';
         }
         
         this.editors.configurations.render();
