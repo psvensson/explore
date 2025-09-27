@@ -65,6 +65,34 @@ body {
     display: block;
 }
 
+#main-content {
+    width: 100%;
+    height: calc(100vh - 120px);
+    display: flex;
+    flex-direction: column;
+}
+
+#scene-viewer-container {
+    width: 100%;
+    flex: 1;
+    min-height: 400px;
+    max-height: calc(100vh - 300px);
+    background: #000;
+    position: relative;
+    display: block;
+    overflow: hidden;
+}
+
+#generator-panel-container {
+    width: 100%;
+    flex-shrink: 0;
+    min-height: 200px;
+    height: auto;
+    background: #0f2740;
+    border-top: 1px solid #1b4469;
+    display: block;
+}
+
 #tileset-editor-container {
     width: 100%;
     height: 100%;

@@ -1,5 +1,19 @@
 // This file handles the user interface logic. It includes functions to create and manage controls and widgets for interacting with the 3D renderer and dungeon generator.
 
+// Disable old UI system when widgets are active
+if (typeof window !== 'undefined' && !window.__DISABLE_OLD_UI__) {
+    console.log('[UI] Old UI system active');
+    
+    // Keep existing initialization for backward compatibility
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => initUI('control-panel'));
+    } else if (document.getElementById('control-panel')) {
+        initUI('control-panel');
+    }
+} else {
+    console.log('[UI] Old UI system disabled - using widget architecture');
+}
+
 export function initUI(rootId = 'control-panel') {
   const controlPanel = document.getElementById(rootId);
   if (!controlPanel) throw new Error(`Control panel #${rootId} not found`);
@@ -294,8 +308,9 @@ function initMainTilesetEditor() {
   }
 }
 
-if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
-  document.addEventListener('DOMContentLoaded', () => {
-    try { initUI(); } catch(e){ console.error(e); }
-  });
-}
+// OLD UI INITIALIZATION DISABLED - NOW USING WIDGET SYSTEM
+// if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
+//   document.addEventListener('DOMContentLoaded', () => {
+//     try { initUI(); } catch(e){ console.error(e); }
+//   });
+// }

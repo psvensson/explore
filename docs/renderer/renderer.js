@@ -16,22 +16,22 @@ export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   console.log('[Render] createRenderer called', { containerId, hasThree: !!THREE, hasOrbitControls: !!THREE?.OrbitControls });
   if(!THREE) throw new Error('THREE dependency missing');
   if(!THREE.OrbitControls) throw new Error('THREE.OrbitControls missing');
-  const container=document.getElementById(containerId); if(!container) throw new Error(`#${containerId} not found`);
-  const width=container.clientWidth||800, height=container.clientHeight||600;
-  console.log('[Render] container dimensions', { width, height, clientWidth: container.clientWidth, clientHeight: container.clientHeight });
+  const canvas=document.getElementById(containerId); if(!canvas) throw new Error(`#${containerId} not found`);
+  const width=canvas.clientWidth||800, height=canvas.clientHeight||600;
+  console.log('[Render] canvas dimensions', { width, height, clientWidth: canvas.clientWidth, clientHeight: canvas.clientHeight });
   const scene=makeScene(THREE);
   const orbitCamera=setVec3(makePerspective(THREE,75,width/height,0.1,2000),0,40,110);
   const fpsCamera=configureFPSCamera(setVec3(makePerspective(THREE,75,width/height,0.1,1500),0,15,30));
   scene.add(fpsCamera);
-  const renderer=new THREE.WebGLRenderer({antialias:true}); 
-  console.log('[Render] WebGL renderer created', { renderer: !!renderer, domElement: !!renderer.domElement });
+  const renderer=new THREE.WebGLRenderer({canvas: canvas, antialias:true}); 
+  console.log('[Render] WebGL renderer created with existing canvas', { renderer: !!renderer, domElement: !!renderer.domElement, canvasId: canvas.id });
   renderer.setSize(width,height); 
   console.log('[Render] renderer size set', { width, height });
-  container.appendChild(renderer.domElement);
-  console.log('[Render] canvas appended to container', { 
-    containerId: container.id, 
-    canvasParent: renderer.domElement.parentElement?.id,
-    canvasInDom: document.contains(renderer.domElement)
+  console.log('[Render] using existing canvas', { 
+    canvasId: canvas.id, 
+    canvasParent: canvas.parentElement?.id,
+    canvasInDom: document.contains(canvas),
+    canvasVisible: canvas.offsetParent !== null
   });
   
   // Debug logging for DOM attachment and sizing
@@ -48,6 +48,15 @@ export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
     });
   }
   addBasicLights(THREE, scene);
+  
+  // Add a test cube to ensure something is visible
+  const testGeometry = new THREE.BoxGeometry(2, 2, 2);
+  const testMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+  const testCube = new THREE.Mesh(testGeometry, testMaterial);
+  testCube.position.set(0, 1, 0);
+  scene.add(testCube);
+  console.log('[Render] Added test cube to scene for visibility');
+  
   if (typeof THREE.sRGBEncoding!=='undefined') renderer.outputEncoding=THREE.sRGBEncoding; if(renderer.physicallyCorrectLights!==undefined) renderer.physicallyCorrectLights=true;
   const controls=initOrbitDefaults(makeOrbitControls(THREE, orbitCamera, renderer.domElement));
   const fps = makeFPSState(THREE, fpsCamera); const keyState=makeKeyState();
@@ -55,7 +64,30 @@ export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   const instance = makeInstance({scene, orbitCamera, fpsCamera, renderer, controls, THREE, fps});
   attachPublicAPIs(instance); // adds generation & utility hooks
   lastInstance=instance; setInstanceRef(instance); // Set lastInstance BEFORE starting loop
-  console.log('[Render] Instance created and set as lastInstance', { instance: !!instance });
+  console.log('[Render] Instance created and set as lastInstance', { 
+    instance: !!instance,
+    sceneChildren: scene.children.length,
+    sceneChildTypes: scene.children.map(child => child.type || child.constructor.name),
+    cameraPosition: [orbitCamera.position.x, orbitCamera.position.y, orbitCamera.position.z],
+    rendererDomElement: !!renderer.domElement,
+    rendererVisible: renderer.domElement.offsetParent !== null
+  });
+  
+  // Log the initial scene state to verify it has basic content (lights, etc.)
+  console.log('[Render] Three.js scene initialized successfully', {
+    sceneObjects: scene.children.map(child => ({
+      type: child.type || child.constructor.name,
+      visible: child.visible,
+      position: child.position ? [child.position.x.toFixed(1), child.position.y.toFixed(1), child.position.z.toFixed(1)] : 'no position'
+    })),
+    cameraPosition: [orbitCamera.position.x.toFixed(1), orbitCamera.position.y.toFixed(1), orbitCamera.position.z.toFixed(1)],
+    cameraLookingAt: controls.target ? [controls.target.x.toFixed(1), controls.target.y.toFixed(1), controls.target.z.toFixed(1)] : 'no target',
+    rendererSize: renderer.getSize(new THREE.Vector2()),
+    canvasInDOM: document.contains(renderer.domElement),
+    canvasSize: [renderer.domElement.width, renderer.domElement.height],
+    canvasStyle: `${renderer.domElement.style.width} x ${renderer.domElement.style.height}`
+  });
+  
   startLoop({renderer, controls, fps, orbitCamera, instance, keyState});
   return instance;
 }
@@ -77,9 +109,15 @@ function startLoop({renderer, controls, fps, orbitCamera, instance, keyState}){
     updateFPS(dt, fps, keyState); 
     controls.update(); 
     renderer.render(instance.scene, fps.mode==='fps'?fps.cam:orbitCamera);
-    // Log occasionally to show render loop is working
-    if (frameCount % 120 === 0) {
-      console.log('[Render] Render loop active', { frameCount, sceneChildren: instance.scene.children.length });
+    
+    // Log the first few frames to confirm rendering is working
+    if (frameCount <= 3) {
+      console.log(`[Render] Frame ${frameCount} rendered successfully`, {
+        sceneChildren: instance.scene.children.length,
+        rendererCalls: renderer.info.render.calls,
+        canvasVisible: renderer.domElement.offsetParent !== null,
+        cameraMode: fps.mode
+      });
     }
   }
   frame();

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/handlebars@4.7.8/dist/handlebars.min.js"></script>
+</head>
+<body>
+    <h1>Widget System Test</h1>
+    
+    <div id="widget-test-area">
+        <h2>Testing Widgets</h2>
+        <div id="main-tabs-container" data-widget-placeholder="main-tabs"></div>
+        <div id="generator-panel-container" data-widget-placeholder="generator-panel"></div>
+    </div>
+
+    <!-- Load dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/handlebars@4.7.8/dist/handlebars.min.js"></script>
+    <script src="ui/Widget.js"></script>
+    
+    <script>
+        console.log('Starting widget test...');
+        console.log('Handlebars loaded:', typeof Handlebars);
+        console.log('Widget.js loaded:', typeof Widget);
+        console.log('Widget.define available:', typeof Widget.define);
+    </script>
+    
+    <script type="module">
+        import { getWidget } from './ui/widget-base.js';
+        console.log('widget-base loaded, getWidget:', typeof getWidget);
+        
+        const WidgetClass = getWidget();
+        console.log('Widget from getWidget:', typeof WidgetClass, WidgetClass.name);
+        
+        // Test widget loading
+        try {
+            const { MainTabsWidget } = await import('./ui/widgets/main-tabs-simple.js');
+            console.log('MainTabsWidget loaded:', typeof MainTabsWidget);
+            
+            // Create instance
+            const tabsWidget = new MainTabsWidget();
+            console.log('Widget instance created:', tabsWidget.name);
+            
+            document.getElementById('main-tabs-container').innerHTML = tabsWidget.render();
+            console.log('Widget rendered successfully!');
+            
+        } catch (error) {
+            console.error('Widget loading failed:', error);
+            document.getElementById('main-tabs-container').innerHTML = 
+                `<div style="color: red;">Error: ${error.message}</div>`;
+        }
+    </script>
+</body>
+</html>
