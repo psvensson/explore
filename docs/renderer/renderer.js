@@ -57,7 +57,11 @@ export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   scene.add(testCube);
   console.log('[Render] Added test cube to scene for visibility');
   
-  if (typeof THREE.sRGBEncoding!=='undefined') renderer.outputEncoding=THREE.sRGBEncoding; if(renderer.physicallyCorrectLights!==undefined) renderer.physicallyCorrectLights=true;
+  // Updated for THREE.js r155+ - use outputColorSpace instead of outputEncoding, useLegacyLights instead of physicallyCorrectLights
+  if (renderer.outputColorSpace !== undefined) renderer.outputColorSpace = THREE.SRGBColorSpace || THREE.sRGBEncoding; 
+  else if (typeof THREE.sRGBEncoding !== 'undefined') renderer.outputEncoding = THREE.sRGBEncoding;
+  if (renderer.useLegacyLights !== undefined) renderer.useLegacyLights = false;
+  else if (renderer.physicallyCorrectLights !== undefined) renderer.physicallyCorrectLights = true;
   const controls=initOrbitDefaults(makeOrbitControls(THREE, orbitCamera, renderer.domElement));
   const fps = makeFPSState(THREE, fpsCamera); const keyState=makeKeyState();
   wireInput({controls, fps, renderer, keyState, orbitCamera});
@@ -161,13 +165,35 @@ function attachPublicAPIs(instance){
 function exposeGeneration(instance){
   let currentAbort = null;
   window.cancelWFCDungeon = ()=>{ if (currentAbort) { try{ currentAbort.abort(); }catch(_){} } };
-  window.generateWFCDungeon = async ({x=3,y=3,z=3, yieldEvery=500, maxSteps=30000, stallTimeoutMs=10000, maxYields=50, centerSeed=true}={})=>{
+  window.generateWFCDungeon = async ({x=3,y=3,z=3, tileset='basic_dungeon', yieldEvery=500, maxSteps=30000, stallTimeoutMs=10000, maxYields=50, centerSeed=true}={})=>{
     try {
-      const [tilesetMod, meshUtil] = await Promise.all([
-        import('../dungeon/tileset.js'), import('./wfc_tile_mesh.js')
+      const [tilesetMod, simplifiedTilesetMod, meshUtil] = await Promise.all([
+        import('../dungeon/tileset.js'), 
+        import('../dungeon/simplified_tilesets.js'),
+        import('./wfc_tile_mesh.js')
       ]);
-      tilesetMod.initializeTileset();
-      const protos = tilesetMod.tilePrototypes;
+      
+      let protos;
+      
+      // Try to use simplified tileset first
+      try {
+        const selectedTileset = simplifiedTilesetMod.getTilesetById(tileset);
+        if (selectedTileset) {
+          const wfcTileset = simplifiedTilesetMod.convertTilesetForWFC(selectedTileset);
+          protos = wfcTileset.prototypes;
+          console.log(`[WFC] Using simplified tileset: ${selectedTileset.name} (${protos.length} prototypes)`);
+          console.log(`[WFC] Prototypes:`, protos.map((p, i) => `${i}:${p.tileId}`));
+        } else {
+          throw new Error(`Simplified tileset '${tileset}' not found`);
+        }
+      } catch (simplifiedError) {
+        console.warn(`[WFC] Failed to load simplified tileset '${tileset}':`, simplifiedError.message);
+        console.log('[WFC] Falling back to legacy tileset system');
+        
+        // Fallback to legacy tileset system
+        tilesetMod.initializeTileset();
+        protos = tilesetMod.tilePrototypes;
+      }
       const rng=(()=>{ let s=Date.now()%1e9; return ()=> (s=(s*1664525+1013904223)%4294967296)/4294967296; })();
   // Important: dims are in tile units, not voxel units. Avoid multiplying by 3 here.
   // Add browser-friendly safeguards to prevent endless runs.
@@ -186,6 +212,7 @@ function exposeGeneration(instance){
     debug: (typeof window.__WFC_DEBUG__==='boolean') ? window.__WFC_DEBUG__ : undefined,
     centerSeed
   });
+  console.log(`[WFC] Generation complete, tiles:`, tiles.length, 'tiles with prototypeIndex:', tiles.map(t => t.prototypeIndex));
   buildAscii(grid3D); buildBrowser(tiles, protos, meshUtil); instance.lastTiles = tiles.map(t=>({...t,tileId:protos[t.prototypeIndex].tileId}));
       const THREERef = instance.THREE || window.THREE; setupMiniViewer(tiles, meshUtil, THREERef); const group = buildMeshGroup(tiles, protos, meshUtil, THREERef);
       if (window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] tiles->group', { tiles: tiles.length, groupChildren: group.children? group.children.length: 'n/a' });
@@ -198,7 +225,7 @@ function exposeGeneration(instance){
 
 function buildAscii(grid){ import('./ascii.js').then(m=>{ const pre=document.getElementById('ascii-map'); if(pre) pre.textContent=m.gridToAscii(grid); }).catch(()=>{}); }
 function buildBrowser(tiles, protos, meshUtil){ import('./ascii.js').then(m=>{ const el=document.getElementById('tile-block-browser'); if(!el){ if(window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] tile-block-browser element missing'); return; } el.innerHTML=''; tiles.forEach(t=>{ const vox=meshUtil.rotateY(protos[t.prototypeIndex].voxels, t.rotationY); const div=document.createElement('div'); div.className='tile-block'; div.dataset.selected='false'; div.dataset.prototype=t.prototypeIndex; div.dataset.rotation=t.rotationY; div.dataset.tx=t.position[2]; div.dataset.ty=t.position[1]; div.dataset.tz=t.position[0]; const pre=document.createElement('pre'); pre.textContent=m.voxBlockToAscii(vox).trim(); const coord=document.createElement('div'); coord.className='coord'; coord.textContent=`${t.position[2]},${t.position[1]},${t.position[0]}`; div.appendChild(coord); div.appendChild(pre); el.appendChild(div); }); if(window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] browser tiles drawn', { tiles: tiles.length, elChildren: el.children.length }); }).catch(()=>{}); }
-function buildMeshGroup(tiles, protos, meshUtil, THREE){ const g=new THREE.Group(); const map=new Map(); tiles.forEach(t=> map.set(`${t.position[0]},${t.position[1]},${t.position[2]}`, t)); const isStair=t=>{ const p=protos[t.prototypeIndex]; return p.meta&&p.meta.role==='stair'; }; const getN=(t,dz,dy,dx)=> map.get(`${t.position[0]+dz},${t.position[1]+dy},${t.position[2]+dx}`); tiles.forEach(t=>{ const below=getN(t,0,-1,0), above=getN(t,0,1,0); const gm=meshUtil.buildTileMesh({THREE, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3, hasStairBelow:!!(below&&isStair(below)), hasStairAbove:!!(above&&isStair(above))}); gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); g.add(gm); }); return g; }
+function buildMeshGroup(tiles, protos, meshUtil, THREE){ const g=new THREE.Group(); const map=new Map(); tiles.forEach(t=> map.set(`${t.position[0]},${t.position[1]},${t.position[2]}`, t)); const isStair=t=>{ const p=protos[t.prototypeIndex]; return p.meta&&p.meta.role==='stair'; }; const getN=(t,dz,dy,dx)=> map.get(`${t.position[0]+dz},${t.position[1]+dy},${t.position[2]+dx}`); tiles.forEach(t=>{ const below=getN(t,0,-1,0), above=getN(t,0,1,0); const gm=meshUtil.buildTileMesh({THREE, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3, hasStairBelow:!!(below&&isStair(below)), hasStairAbove:!!(above&&isStair(above)), prototypes:protos}); gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); g.add(gm); }); return g; }
 
 // Browser auto-bootstrap (skip during Jest tests)
 if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {

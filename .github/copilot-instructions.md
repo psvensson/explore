@@ -41,14 +41,63 @@ generateWFCDungeon({
 
 **Critical:** WFC uses **incremental step/expand API** to avoid blocking the browser thread. Legacy `model.run()` is fallback only.
 
-### Tileset Editor Architecture (4-Step Hierarchical)
+### Tileset Editor Architecture (Refactored - Phases 1, 2 & 3)
 
-The new tileset editor implements a **hierarchical workflow** in `docs/ui/`:
+The tileset editor has been **extensively refactored** for maintainability:
 
-1. **Structure Editor** - Define 3D voxel geometry
+**Phase 1 - Utility Extraction:**
+- `docs/renderer/lighting-profiles.js` - Centralized lighting configurations
+- `docs/utils/voxel-coordinates.js` - Coordinate conversion utilities
+- `docs/renderer/scene_setup.js` - Enhanced with axis indicators
+
+**Phase 2 - Class Extraction:**
+- `docs/ui/utils/voxel-3d-viewer.js` - Reusable 3D viewer class (scene, camera, renderer, lighting)
+- `docs/ui/utils/viewer-controls.js` - Reusable mouse controls class (rotation, zoom)
+
+**Phase 3 - Pipeline & Modal Utilities:**
+- `docs/ui/utils/structure-mesh-pipeline.js` - Centralized structure-to-mesh conversion pipeline
+- `docs/ui/utils/modal-manager.js` - Standardized modal/dialog management
+
+**Hierarchical Workflow** in `docs/ui/`:
+1. **Structure Editor** - Define 3D voxel geometry with inline 3D previews
 2. **Metadata Editor** - Create weight/role packages  
 3. **Package Editor** - Combine structures + metadata
 4. **Configuration Editor** - Export complete tilesets
+
+**3D Viewer Pattern:**
+```javascript
+// Create viewer using refactored classes
+const viewer = new Voxel3DViewer(canvas, { viewerType: 'inline', ... });
+await viewer.initialize(THREERef);
+viewer.setMesh(tileMesh);
+
+// Add controls
+const controls = new ViewerControls(canvas, viewer);
+controls.enable();
+
+// Start rendering
+viewer.startRenderLoop();
+
+// Cleanup
+controls.destroy();
+viewer.stopRenderLoop();
+```
+
+**Mesh Pipeline Pattern:**
+```javascript
+// Static methods for mesh creation
+const mesh = await StructureMeshPipeline.createMeshFromStructure(THREERef, layersArray);
+const mesh2 = await StructureMeshPipeline.createMeshFromStructureId(THREERef, 'struct_id', allStructures);
+```
+
+**Modal Manager Pattern:**
+```javascript
+// Static methods for dialogs
+const modal = ModalManager.createModal({ title: 'Title', content: 'Content' });
+ModalManager.showModal(modal);
+ModalManager.closeModal(modal);
+ModalManager.showNotification({ message: 'Success!', type: 'success' });
+```
 
 **View Preservation Pattern:**
 ```javascript
@@ -82,6 +131,15 @@ showEditor() {
 - Always call `_resetTilesetForTests()` in `beforeEach`
 - Mock `global.NDWFC3D = function(){}` before importing tileset
 - Use dynamic imports to avoid circular ESM issues: `const mod = await import('../docs/path.js')`
+
+**Refactored Class Testing:**
+- `StructureMeshPipeline` and `ModalManager` use **static methods** only
+- `Voxel3DViewer` and `ViewerControls` are **instance classes**
+- Pipeline methods are **async** - always `await`
+- Structure lookups use plain objects `{}` not Maps
+- See `tests/refactored-classes.test.js` for patterns
+
+**Current Test Status:** 89% pass rate (190/213 tests passing)
 
 ### Three.js Integration
 

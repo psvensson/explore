@@ -53,6 +53,7 @@ class SizeControlsWidget extends Widget {
                     font-weight: 600;
                     margin-bottom: 6px;
                     font-size: 14px;
+                    color: #cfe6ff;
                 }
                 
                 .size-inputs {
@@ -67,20 +68,23 @@ class SizeControlsWidget extends Widget {
                     gap: 3px;
                     font-size: 12px;
                     font-weight: 500;
+                    color: #cfe6ff;
                 }
                 
                 .size-input {
                     width: 60px;
                     padding: 4px 6px;
-                    border: 1px solid #ddd;
+                    border: 1px solid #2d4a6b;
                     border-radius: 3px;
                     font-size: 13px;
+                    background: rgba(11, 21, 34, 0.8);
+                    color: #cfe6ff;
                 }
                 
                 .size-input:focus {
                     outline: none;
-                    border-color: #4a90e2;
-                    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+                    border-color: #60A5FA;
+                    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
                 }
             `
         });

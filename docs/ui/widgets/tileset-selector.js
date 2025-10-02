@@ -51,6 +51,7 @@ export class TilesetSelectorWidget extends getWidget() {
                     margin-bottom: 6px;
                     font-weight: 500;
                     font-size: 13px;
+                    color: #cfe6ff;
                 }
                 
                 .tileset-controls {
@@ -62,22 +63,24 @@ export class TilesetSelectorWidget extends getWidget() {
                 .tileset-dropdown {
                     flex: 1;
                     padding: 6px 8px;
-                    border: 1px solid #ddd;
+                    border: 1px solid #2d4a6b;
                     border-radius: 4px;
                     font-size: 13px;
-                    background: white;
+                    background: rgba(11, 21, 34, 0.8);
+                    color: #cfe6ff;
                     cursor: pointer;
                 }
                 
                 .tileset-dropdown:focus {
                     outline: none;
-                    border-color: #4a90e2;
-                    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+                    border-color: #60A5FA;
+                    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
                 }
                 
                 .refresh-button {
-                    background: #f8f9fa;
-                    border: 1px solid #ddd;
+                    background: rgba(15, 39, 64, 0.8);
+                    border: 1px solid #2d4a6b;
+                    color: #cfe6ff;
                     padding: 6px 8px;
                     border-radius: 4px;
                     cursor: pointer;
@@ -87,14 +90,16 @@ export class TilesetSelectorWidget extends getWidget() {
                 }
                 
                 .refresh-button:hover {
-                    background: #e9ecef;
+                    background: rgba(27, 68, 105, 0.8);
+                    border-color: #60A5FA;
                     transform: rotate(90deg);
                 }
                 
                 .tileset-info {
                     margin-top: 6px;
                     padding: 6px 8px;
-                    background: #f8f9fa;
+                    background: rgba(15, 39, 64, 0.5);
+                    border: 1px solid #2d4a6b;
                     border-radius: 3px;
                     font-size: 11px;
                     display: flex;
@@ -104,23 +109,19 @@ export class TilesetSelectorWidget extends getWidget() {
                 
                 .tile-count {
                     font-weight: 500;
-                    color: #666;
+                    color: #60A5FA;
                 }
             `
         });
         
         this.state = { 
-            selectedTileset: 'default',
-            tilesets: [
-                { value: 'default', name: 'Default Dungeon' },
-                { value: 'simple', name: 'Simple Rooms' },
-                { value: 'advanced', name: 'Advanced (Coming Soon)' }
-            ],
-            selectedTilesetInfo: {
-                description: 'Standard dungeon rooms and corridors',
-                tileCount: 12
-            }
+            selectedTileset: 'basic_dungeon',
+            tilesets: [],
+            selectedTilesetInfo: null
         };
+        
+        // Load simplified tilesets on initialization
+        this.loadSimplifiedTilesets();
     }
 
     onRender() {
@@ -150,13 +151,57 @@ export class TilesetSelectorWidget extends getWidget() {
         });
     }
 
+    async loadSimplifiedTilesets() {
+        try {
+            // Lazy load simplified tilesets 
+            const { listTilesets, getTilesetById } = await import('../../dungeon/simplified_tilesets.js');
+            
+            const availableTilesets = listTilesets();
+            const tilesetOptions = availableTilesets.map(tileset => ({
+                value: tileset.id,
+                name: tileset.name,
+                info: {
+                    description: tileset.description,
+                    tileCount: tileset.tileCount
+                }
+            }));
+            
+            // Set default selection info
+            const defaultTileset = getTilesetById(this.state.selectedTileset);
+            const defaultInfo = defaultTileset ? {
+                description: defaultTileset.description,
+                tileCount: defaultTileset.tiles.length
+            } : null;
+            
+            this.update({ 
+                tilesets: tilesetOptions,
+                selectedTilesetInfo: defaultInfo
+            });
+            
+            console.log('[TilesetSelector] Loaded simplified tilesets:', tilesetOptions.length);
+            
+        } catch (error) {
+            console.error('[TilesetSelector] Failed to load simplified tilesets:', error);
+            
+            // Fallback to basic options
+            this.update({
+                tilesets: [
+                    { value: 'basic_dungeon', name: 'Basic Dungeon (fallback)' }
+                ],
+                selectedTilesetInfo: { description: 'Fallback tileset', tileCount: 'unknown' }
+            });
+        }
+    }
+
     async refreshTilesets() {
         try {
+            // Reload simplified tilesets
+            await this.loadSimplifiedTilesets();
+            
             // Emit refresh event to allow parent to update tileset list
             this.emit('refresh-tilesets');
             
-            // Could also directly fetch tileset configurations here
-            // For now, just show a visual feedback
+            // Visual feedback
             const button = this.element.querySelector('.refresh-button');
             if (button) {
                 button.style.transform = 'rotate(360deg)';

@@ -234,7 +234,7 @@ const LEGACY_TILE_DEFS = [
 
   // 12: -Z stair (upper/going down)
   // Floor layer: open below for vertical movement from lower stair
-  // Middle layer: stair steps with passable path
+  // Middle layer: stair steps with passable path (front must be open for landing)
   // Ceiling layer: solid top
   { tileId: 202, layers: [
       [
@@ -243,9 +243,9 @@ const LEGACY_TILE_DEFS = [
         "000"   // 0 0 0
       ],
       [
-        "111",  // 1 1 1
+        "101",  // 1 0 1 - front row open for landing (was "111")
         "020",  // 0 2 0
-        "101"   // 1 0 1 (changed from 000 to match corridor patterns)
+        "111"   // 1 1 1 - back row solid (was "101")
       ],
       [
         "111",  // 1 1 1

@@ -69,9 +69,15 @@ describe('tileset', () => {
     // Check that stairs have the expected openings for connectivity
     function hasConnectivityOpening(proto){
       const v = proto.voxels;
-      // Both stairs should have opening in their bottom row middle layer (for horizontal connectivity)
-      // This corresponds to middle vertical layer (y=1), bottom z row (z=2), center x (x=1)
-      return v[2][1][1] === 0; // bottom row, middle layer, center position
+      // Stairs should have opening at their FORWARD face (landing direction) for connectivity
+      // For +Z stair (dir=1): forward is z=2, should be open at v[2][1][1]
+      // For -Z stair (dir=-1): forward is z=0, should be open at v[0][1][1]
+      const dir = proto.meta.dir;
+      if (dir === 1) {
+        return v[2][1][1] === 0; // +Z stair: back row (forward direction)
+      } else {
+        return v[0][1][1] === 0; // -Z stair: front row (forward direction)
+      }
     }
     
     for (const stair of stairs){

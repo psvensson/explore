@@ -35,14 +35,29 @@ describe('renderer', () => {
     }
     class Scene { constructor(){ this.children=[];} add(o){ this.children.push(o);} }
     class PerspectiveCamera { constructor(){ this.position=new Vector3(); this.matrix={ elements:new Array(16).fill(0) }; this.matrix.elements[0]=1; this.matrix.elements[5]=1; this.matrix.elements[10]=1;} updateProjectionMatrix(){} }
-    class WebGLRenderer { constructor(){ this.domElement=document.createElement('canvas'); } setSize(){} render(){} }
-    class DirectionalLight { constructor(){ this.position={ set(){} }; } }
-    class GridHelper {}
+    class WebGLRenderer { 
+      constructor(){ 
+        this.domElement=document.createElement('canvas');
+        this.info = { render: { calls: 0 } };
+      } 
+      setSize(){} 
+      render(){ this.info.render.calls++; } 
+      getSize(){ return {width: 800, height: 600}; } 
+    }
+    class DirectionalLight { constructor(){ this.position=new Vector3(10,10,10); this.visible=true; this.type='DirectionalLight'; } }
+    class GridHelper { constructor(){ this.position=new Vector3(); this.visible=true; this.type='GridHelper'; } }
+    class Mesh { constructor(geom, mat){ this.geometry=geom; this.material=mat; this.position=new Vector3(); this.visible=true; this.type='Mesh'; } }
+    class BoxGeometry { constructor(w,h,d){ this.width=w; this.height=h; this.depth=d; } }
+    class MeshLambertMaterial { constructor(opts){ this.color=opts.color; } }
+    class Vector2 { constructor(x=0,y=0){ this.width=x; this.height=y; } }
     class OrbitControlsMock {
       constructor(camera, dom){ this.camera=camera; this.domElement=dom; this.target=new Vector3(); this.minDistance=5; this.maxDistance=300; }
       update(){}
     }
-    const THREE = { Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, GridHelper, OrbitControls: OrbitControlsMock, Vector3 };
+    const THREE = { 
+      Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, GridHelper, 
+      OrbitControls: OrbitControlsMock, Vector3, Vector2, Mesh, BoxGeometry, MeshLambertMaterial 
+    };
     const inst = createRenderer({ THREE });
     expect(inst.controls).toBeInstanceOf(OrbitControlsMock);
   });

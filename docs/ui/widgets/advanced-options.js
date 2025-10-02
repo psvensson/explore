@@ -81,9 +81,9 @@ export class AdvancedOptionsWidget extends getWidget() {
                 .advanced-options {
                     margin-top: 12px;
                     padding: 8px;
-                    background: #f8f9fa;
+                    background: rgba(15, 39, 64, 0.5);
                     border-radius: 4px;
-                    border: 1px solid #e9ecef;
+                    border: 1px solid #2d4a6b;
                 }
                 
                 .advanced-options-header {
@@ -96,6 +96,7 @@ export class AdvancedOptionsWidget extends getWidget() {
                 .advanced-options-title {
                     font-weight: 500;
                     font-size: 13px;
+                    color: #cfe6ff;
                 }
                 
                 .toggle-advanced {
@@ -104,7 +105,7 @@ export class AdvancedOptionsWidget extends getWidget() {
                     font-size: 12px;
                     cursor: pointer;
                     padding: 2px 4px;
-                    color: #666;
+                    color: #60A5FA;
                 }
                 
                 .advanced-options-content {
@@ -125,20 +126,23 @@ export class AdvancedOptionsWidget extends getWidget() {
                     gap: 3px;
                     font-size: 11px;
                     font-weight: 500;
+                    color: #cfe6ff;
                 }
                 
                 .advanced-input {
                     width: 70px;
                     padding: 3px 5px;
-                    border: 1px solid #ddd;
+                    border: 1px solid #2d4a6b;
                     border-radius: 3px;
                     font-size: 12px;
+                    background: rgba(11, 21, 34, 0.8);
+                    color: #cfe6ff;
                 }
                 
                 .advanced-input:focus {
                     outline: none;
-                    border-color: #4a90e2;
-                    box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.2);
+                    border-color: #60A5FA;
+                    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.2);
                 }
                 
                 .checkbox-options {
@@ -146,6 +150,7 @@ export class AdvancedOptionsWidget extends getWidget() {
                     align-items: center;
                     gap: 8px;
                     font-size: 12px;
+                    color: #cfe6ff;
                 }
                 
                 .checkbox-group {
@@ -153,11 +158,16 @@ export class AdvancedOptionsWidget extends getWidget() {
                     align-items: center;
                     gap: 4px;
                     cursor: pointer;
+                    color: #cfe6ff;
+                }
+                
+                .advanced-checkbox {
+                    accent-color: #60A5FA;
                 }
                 
                 .checkbox-hint {
                     font-size: 10px;
-                    color: #666;
+                    color: rgba(207, 230, 255, 0.7);
                 }
                 
                 @keyframes slideDown {

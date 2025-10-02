@@ -161,16 +161,28 @@ class MainTabsWidget extends Widget {
         if (typeof window === 'undefined') return;
 
         try {
-            // Lazy loading for heavy tileset editor following coding instructions
-            const { TilesetEditor } = await import('../tileset_editor.js');
+            // Lazy loading for simplified tileset editor following coding instructions
+            const { SimplifiedTilesetEditor } = await import('../simplified_tileset_editor.js');
             
             const container = document.getElementById('tileset-editor-container');
             if (container && !window.mainTilesetEditor) {
-                window.mainTilesetEditor = new TilesetEditor(container);
-                console.log('[Widget] Tileset editor initialized');
+                window.mainTilesetEditor = new SimplifiedTilesetEditor(container);
+                console.log('[MainTabs] Simplified tileset editor initialized');
             }
         } catch (error) {
-            console.error('[Widget] Failed to initialize tileset editor:', error);
+            console.error('[MainTabs] Failed to initialize simplified tileset editor:', error);
+            
+            // Fallback message if editor fails to load
+            const container = document.getElementById('tileset-editor-container');
+            if (container) {
+                container.innerHTML = `
+                    <div class="editor-error">
+                        <h3>Tileset Editor Error</h3>
+                        <p>Failed to load simplified tileset editor: ${error.message}</p>
+                        <p>Check browser console for details.</p>
+                    </div>
+                `;
+            }
         }
     }
 }
