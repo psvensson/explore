@@ -45,17 +45,17 @@ packages.forEach(packageName => {
     }
 });
 
-console.log('\n6. Backward Compatibility:');
+console.log('\n6. Base vs Modular:');
 const tilesetData = new TilesetData();
 
-// Legacy mode
-console.log('   Legacy mode:');
-const legacyTiles = tilesetData.getLegacyTiles();
-console.log(`     - Tile count: ${legacyTiles.length}`);
+// Base (ordered) tile list
+console.log('   Base tiles:');
+const baseTiles = tilesetData.getTiles();
+console.log(`     - Tile count: ${baseTiles.length}`);
 
-// Modular mode
+// Modular
 tilesetData.enableModular(true);
-console.log('   Modular mode:');
+console.log('   Modular packages:');
 tilesetData.getAvailablePackages().forEach(pkg => {
     tilesetData.setPackage(pkg);
     const stats = tilesetData.getStats();
@@ -75,6 +75,7 @@ console.log(`     - Average weight difference: ${comparison.differences.avgWeigh
 
 console.log('\n8. Custom Package Creation Example:');
 // Create a custom minimal package
+// Note: corridor_ew removed – east/west handled via rotation metadata.
 const customTiles = [
     {
         structure_name: 'corridor_nsew',
@@ -91,7 +92,7 @@ const customTiles = [
         properties: 'default'
     },
     {
-        structure_name: 'corridor_ew',
+        structure_name: 'stair_up_north',
         weight_package: 'balanced',
         role_package: 'standard',
         rotation: 0,

@@ -50,7 +50,7 @@ npm test
  - Adjacency rule logic is centralized in `wfc_rules.js` and covered by `rules_snapshot.test.js` to detect unintended constraint drift.
 
 ## Directional Stairs, Clear Volume & Openness Constraints
-The legacy two‑piece lower/upper stair pairing has been replaced by four *directional* stair prototypes (no rotations) to allow more precise Wave Function Collapse (WFC) adjacency control and guarantee usable landings. A dedicated "open landing" prototype supplements them to satisfy a stricter forward clearance requirement ("clear volume"):
+Four directional stair prototypes (no rotations) plus an open landing prototype enable precise adjacency control and guaranteed usable landings. A stricter forward clearance ("clear volume") is enforced via openness heuristics:
 
 | Prototype | Axis | Dir | Meaning |
 |-----------|------|-----|---------|
@@ -85,7 +85,7 @@ All stair tiles now include a fully solid floor layer (every voxel with y=0 is `
 - `stair_clear_volume.test.js` – Ensures at least one non-stair neighbor satisfies the stricter clear volume forward requirement for each stair orientation (landing tile coverage).
 - `stair_no_horizontal_adjacency.test.js` – Prevents lateral stair clustering.
 - `stair_solid_floor.test.js` – Locks in solid floor invariant.
-- `stair_clearance.test.js` / `stair_vertical_constraint.test.js` – Additional openness & legacy vertical behavior.
+- `stair_clearance.test.js` / `stair_vertical_constraint.test.js` – Additional openness & vertical behavior.
 
 ### Future Extensions
 Potential improvements:
@@ -135,6 +135,39 @@ Each prototype in `TILE_DEFS` may specify `meta.weight` (default `1`). These wei
 - Landing: light (0.6) – appears when needed for openness but stays rare otherwise.
 
 Weights are surfaced through `buildRules` which now derives its `weights` array from `prototype.meta.weight`.
+
+## Voxel Semantics (Single Source of Truth)
+Centralized in `docs/utils/voxel_constants.js`:
+
+```
+0 = EMPTY  (walkable / air)
+1 = SOLID  (wall / structural mass: floor, ceiling, wall)
+2 = STAIR  (special traversable element)
+```
+
+All code (normalization, mesh generation, editor UI, tileset conversion) must reference the exported `VOXEL` constants—never hard‑code numeric meanings or invert them ad‑hoc.
+
+### Canonical Semantics
+All structures now use a single voxel meaning: 0=empty, 1=solid, 2=stair. Historical inversion bridges and flags have been removed in favor of this unified representation. Tests (`voxel_semantics.test.js`, `tileset_conversion_semantics.test.js`, `mesh_uniqueness.test.js`) enforce consistency.
+
+### Supporting Utility Modules Added
+| Module | Purpose |
+|--------|---------|
+| `voxel_constants.js` | Central semantic constants + helpers (`getVoxelMeaning`) |
+| `voxel_normalize.js` | Normalizes any supported structure form into canonical `vox[z][y][x]` |
+| `mesh_geometry_builders.js` | Tiny focused builders for floor, ceiling, solid cube primitives |
+| `mesh_signature.js` | Deterministic signature/hash of meshes for uniqueness tests |
+
+These modules intentionally keep functions ≤ ~25 lines, favoring clarity and testability. The former alternate WFC path has been removed; only the incremental expand/step API is supported.
+
+### Editor Default Structure
+The structure editor’s default corridor now uses an east–west corridor pattern: middle layer rows `['111','000','111']` (walls north/south, clear passage through center) to reinforce the canonical semantics visually.
+
+### Guardrails Against Future Drift
+* Tests assert both semantics and mesh differentiation.
+* A planned follow‑up could introduce a manifest verification for editor preview meshes similar to the tileset manifest already in place.
+
+---
 
 ## Tileset Manifest & Ordering Guard
 Initialization produces a manifest (`tilesetManifest()`) enumerating ordered prototype metadata plus a compact voxel `signature`. A Jest test (`tileset_ordering.test.js`) hashes this manifest to detect accidental reordering or voxel drift that would silently shift prototype indices (breaking downstream assumptions). If you intentionally change `TILE_DEFS`, update the snapshot hash in that test.

@@ -46,6 +46,7 @@ describe('renderer', () => {
     }
     class DirectionalLight { constructor(){ this.position=new Vector3(10,10,10); this.visible=true; this.type='DirectionalLight'; } }
     class GridHelper { constructor(){ this.position=new Vector3(); this.visible=true; this.type='GridHelper'; } }
+    class Group { constructor(){ this.children=[]; this.position=new Vector3(); this.visible=true; this.type='Group'; this.name=''; } add(o){ this.children.push(o); } remove(o){ const i=this.children.indexOf(o); if(i>=0)this.children.splice(i,1); } }
     class Mesh { constructor(geom, mat){ this.geometry=geom; this.material=mat; this.position=new Vector3(); this.visible=true; this.type='Mesh'; } }
     class BoxGeometry { constructor(w,h,d){ this.width=w; this.height=h; this.depth=d; } }
     class MeshLambertMaterial { constructor(opts){ this.color=opts.color; } }
@@ -55,7 +56,7 @@ describe('renderer', () => {
       update(){}
     }
     const THREE = { 
-      Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, GridHelper, 
+      Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, GridHelper, Group,
       OrbitControls: OrbitControlsMock, Vector3, Vector2, Mesh, BoxGeometry, MeshLambertMaterial 
     };
     const inst = createRenderer({ THREE });

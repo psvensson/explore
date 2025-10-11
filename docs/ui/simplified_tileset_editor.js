@@ -604,7 +604,9 @@ export class SimplifiedTilesetEditor {
 
   renderVoxelPreview(structureData) {
     // Convert existing TileStructures format to flat array for consistent handling
+    console.log('[SimplifiedTilesetEditor] renderVoxelPreview received structureData:', structureData);
     const voxelData = this.convertStructureToFlat(structureData);
+    console.log('[SimplifiedTilesetEditor] converted to voxelData (flat 27):', voxelData);
     
     // Enhanced 3D representation showing all 3 layers of 3x3x3 voxel data
     const layers = [
@@ -633,17 +635,42 @@ export class SimplifiedTilesetEditor {
   }
 
   convertStructureToFlat(structureData) {
+    console.log('[SimplifiedTilesetEditor] convertStructureToFlat input:', structureData);
+    
     // Handle different structure formats
     if (Array.isArray(structureData) && structureData.length === 27) {
       // Already flat array format
+      console.log('[SimplifiedTilesetEditor] Already flat (27 elements)');
       return structureData;
     }
     
+    // Handle canonical 3-layer format: [ [[floor 3x3]], [[mid 3x3]], [[ceiling 3x3]] ]
+    if (Array.isArray(structureData) && structureData.length === 3 && 
+        Array.isArray(structureData[0]) && structureData[0].length === 3 &&
+        Array.isArray(structureData[0][0]) && structureData[0][0].length === 3) {
+      console.log('[SimplifiedTilesetEditor] Detected canonical 3-layer format (3 layers of 3x3)');
+      const flatArray = [];
+      
+      // Flatten in Y-major order: y=0 (floor), y=1 (middle), y=2 (ceiling)
+      for (let y = 0; y < 3; y++) {
+        const layer = structureData[y];
+        for (let z = 0; z < 3; z++) {
+          for (let x = 0; x < 3; x++) {
+            flatArray.push(layer[z][x] || 0);
+          }
+        }
+      }
+      
+      console.log('[SimplifiedTilesetEditor] Flattened to 27 elements:', flatArray);
+      return flatArray;
+    }
+    
     if (Array.isArray(structureData) && Array.isArray(structureData[0])) {
-      // Handle nested format like [[[0,1,0],[1,1,1],[0,1,0]]]
+      // Handle legacy single-layer nested format like [[[0,1,0],[1,1,1],[0,1,0]]]
       const flatArray = new Array(27).fill(0);
       
       if (structureData[0] && Array.isArray(structureData[0][0])) {
+        console.log('[SimplifiedTilesetEditor] Legacy single-layer format - mapping to middle layer');
         // Format: [[[row1],[row2],[row3]]] - single layer
         const layer = structureData[0];
         for (let z = 0; z < 3; z++) {
@@ -661,6 +688,7 @@ export class SimplifiedTilesetEditor {
     }
     
     // Fallback: empty structure
+    console.warn('[SimplifiedTilesetEditor] Unrecognized format, returning empty structure');
     return new Array(27).fill(0);
   }
 
@@ -1150,19 +1178,20 @@ export class SimplifiedTilesetEditor {
     let edges = ['0', '0', '0', '0']; // N, E, S, W
     
     if (existingStructure) {
-      // Use the same data processing as the inline viewer
-      const structureData = existingStructure.structure[0];
-      console.log('[StructureEditor] Processing structure data:', existingStructure.structure);
-      console.log('[StructureEditor] Structure data layers:', structureData);
+      // Extract 3-layer structure: [floor, mid, ceiling]
+      const structureData = existingStructure.structure;
+      console.log('[StructureEditor] Processing structure data:', structureData);
       
-      // Flatten structure data same way as inline viewer
-      const flatVoxelData = [];
-      for (let layer = 0; layer < structureData.length; layer++) {
-        if (Array.isArray(structureData[layer])) {
-          flatVoxelData.push(...structureData[layer]);
-        }
+      // Convert from 3-layer canonical format [floor_3x3, mid_3x3, ceiling_3x3]
+      // to flat 27-element array for the voxel editor grid
+      const flatVoxelData = this.convertStructureToFlat(structureData);
+      console.log('[StructureEditor] Converted to flat array, length:', flatVoxelData?.length);
+      
+      if (flatVoxelData && flatVoxelData.length === 27) {
+        voxelData = flatVoxelData;
+      } else {
+        console.error('[StructureEditor] Failed to convert structure to flat array!');
       }
-      voxelData = flatVoxelData;
       
       structureName = structureId;
       structureType = existingStructure.type || 'corridor';
@@ -1473,6 +1502,12 @@ export class SimplifiedTilesetEditor {
         }
       }
       
+      const { StructureMeshPipeline } = await import('./utils/structure-mesh-pipeline.js');
+      StructureMeshPipeline.invalidateCacheForStructure(name);
+      if (isEditing && name !== structureId) {
+        StructureMeshPipeline.invalidateCacheForStructure(structureId);
+      }
+
       // Close modal
       document.body.removeChild(modal);
       
@@ -1586,6 +1621,9 @@ export class SimplifiedTilesetEditor {
       // Remove from selected structures if selected
       this.selectedStructures.delete(structureId);
       
+  const { StructureMeshPipeline } = await import('./utils/structure-mesh-pipeline.js');
+  StructureMeshPipeline.invalidateCacheForStructure(structureId);
+
       // Save work in progress and update live preview after structure deletion
       this.saveWorkInProgress(true); // true indicates this is a modification
       this.updateLivePreview();
@@ -1604,17 +1642,31 @@ export class SimplifiedTilesetEditor {
   // === STRUCTURE ANALYSIS METHODS ===
 
   isBuiltInStructure(structureId) {
-    // Use DataMerger if available, otherwise fallback to local check
-    if (typeof window !== 'undefined' && window.dataMerger) {
-      return window.dataMerger.isBuiltInStructure(structureId);
+    try {
+      // Prefer runtime DataMerger which already exposes built-in detection
+      if (typeof window !== 'undefined' && window.dataMerger && window.dataMerger.initialized && typeof window.dataMerger.isBuiltInStructure === 'function') {
+        return window.dataMerger.isBuiltInStructure(structureId);
+      }
+      // Direct import fallback (single source of truth: DEFAULT_TILE_STRUCTURES keys)
+      // Lazy require via dynamic import to avoid circular load in tests
+      if (typeof window !== 'undefined' && !this.__builtInIdsCache) {
+        // cache promise to avoid multiple imports
+        this.__builtInIdsCache = import('../dungeon/defaults/default_tile_structures.js')
+          .then(mod => mod.listBuiltInStructureIds())
+          .catch(() => []);
+      }
+      // If we have a cached resolved array, use it synchronously
+      if (Array.isArray(this.__builtInIdsResolved)) {
+        return this.__builtInIdsResolved.includes(structureId);
+      }
+      // Kick resolution if pending
+      if (this.__builtInIdsCache && this.__builtInIdsCache.then) {
+        this.__builtInIdsCache.then(ids => { this.__builtInIdsResolved = ids; });
+      }
+      return false; // Until resolved
+    } catch {
+      return false;
     }
-    
-    // Fallback for when DataMerger isn't initialized yet
-    const builtInStructures = [
-      'corridor_nsew', 'corridor_ns', 'corridor_ew', 'corner_ne', 
-      'corridor_nse', 'dead_end_n', 'room_3x3', 'stair_up', 'stair_down', 'multi_level_open'
-    ];
-    return builtInStructures.includes(structureId);
   }
 
   analyzeStructureConnectivity(structureId) {
@@ -1802,14 +1854,15 @@ export class SimplifiedTilesetEditor {
   // Setup a compact 3D viewer for an individual tile using refactored viewer class
   async setupInline3DViewer(canvas, structureId) {
     try {
-      console.log('[TileViewer] Setting up 3D viewer for:', structureId);
+      console.log('[TileViewer] ===== Setting up 3D viewer for structureId:', structureId, '=====');
       const allStructures = this.getAllStructures();
+      console.log('[TileViewer] All available structures:', Object.keys(allStructures));
       const structure = allStructures[structureId];
       if (!structure) {
         console.error('[TileViewer] Structure not found:', structureId);
         return;
       }
-      console.log('[TileViewer] Structure data:', structure);
+      console.log('[TileViewer] Found structure for', structureId, ':', structure);
 
       // Get THREE using the exact same pattern as the main renderer
       const THREERef = (window.dungeonRenderer && window.dungeonRenderer.THREE) || window.THREE;
@@ -1841,11 +1894,15 @@ export class SimplifiedTilesetEditor {
         return;
       }
       
-      // Create authentic tile mesh using pipeline
+      // Create authentic tile mesh using pipeline - use same settings as main scene
       console.log('[TileViewer] Processing structure data:', structure.structure);
       const materialFactory = makeMaterialFactory(THREERef);
-      const tileMesh = await StructureMeshPipeline.createMeshFromStructureObject(THREERef, structure, { materialFactory });
-      console.log('[TileViewer] Created authentic WFC tile mesh using pipeline');
+      const tileMesh = await StructureMeshPipeline.createMeshFromStructureObject(THREERef, structure, { 
+        materialFactory,
+        unit: 3,
+        structureId
+      });
+      console.log('[TileViewer] Created authentic WFC tile mesh using pipeline (main scene mode)');
       
       // Add mesh to viewer
       viewer.setMesh(tileMesh);
@@ -2443,14 +2500,22 @@ export class SimplifiedTilesetEditor {
 
   // Setup 3D viewer in structure editor using refactored viewer class
   async setupStructureEditor3D(modal, voxelData) {
+    console.log('[setupStructureEditor3D] Starting with voxelData:', voxelData);
+    console.log('[setupStructureEditor3D] VoxelData length:', voxelData?.length);
+    console.log('[setupStructureEditor3D] Non-zero voxels:', voxelData?.filter(v => v !== 0).length);
     const canvas = modal.querySelector('#structure-editor-3d');
-    if (!canvas) return;
+    if (!canvas) {
+      console.error('[setupStructureEditor3D] Canvas not found!');
+      return;
+    }
+    console.log('[setupStructureEditor3D] Canvas found:', canvas.width, 'x', canvas.height);
 
     // Get THREE using the same pattern as main renderer (fail-fast)
     const THREERef = (window.dungeonRenderer && window.dungeonRenderer.THREE) || window.THREE;
     if (!THREERef) {
       throw new Error('THREE.js reference not available - main renderer must be loaded first');
     }
+    console.log('[setupStructureEditor3D] THREE.js reference obtained');
 
     // Import viewer classes and utilities
     const { Voxel3DViewer } = await import('./utils/voxel-3d-viewer.js');
@@ -2468,17 +2533,28 @@ export class SimplifiedTilesetEditor {
     });
     
     // Initialize viewer
+    console.log('[setupStructureEditor3D] Initializing viewer...');
     const success = await viewer.initialize(THREERef);
     if (!success) {
       throw new Error('Failed to initialize dialog viewer');
     }
+    console.log('[setupStructureEditor3D] Viewer initialized successfully');
 
-    // Create authentic structure mesh using pipeline
+    // Create authentic structure mesh using pipeline - match main scene rendering
+    console.log('[StructureEditor3D] Creating mesh with PRODUCTION MODE (same as main scene)');
+    console.log('[StructureEditor3D] VoxelData type:', typeof voxelData, 'length:', voxelData?.length);
     const materialFactory = makeMaterialFactory(THREERef);
-    const group = await StructureMeshPipeline.createMeshFromStructure(THREERef, voxelData, { materialFactory });
+    const group = await StructureMeshPipeline.createMeshFromStructure(THREERef, voxelData, { 
+      materialFactory,
+      unit: 3
+    });
+    console.log('[StructureEditor3D] Mesh created, children count:', group?.children?.length || 0);
+    console.log('[StructureEditor3D] Mesh type:', group?.type, 'isGroup:', group?.isGroup);
     
     // Add mesh to viewer
+    console.log('[setupStructureEditor3D] Setting mesh to viewer...');
     viewer.setMesh(group);
+    console.log('[setupStructureEditor3D] Mesh set, scene children:', viewer.scene?.children?.length);
 
     // Setup mouse controls using new class
     const controls = new ViewerControls(canvas, viewer, {
@@ -2495,9 +2571,12 @@ export class SimplifiedTilesetEditor {
     canvas._editorData.materialFactory = materialFactory;
 
     // Start render loop
+    console.log('[setupStructureEditor3D] Starting render loop...');
     viewer.startRenderLoop();
 
-    console.log('[StructureEditor3D] Authentic WFC 3D viewer initialized');
+    console.log('[StructureEditor3D] Authentic WFC 3D viewer initialized - COMPLETE');
+    console.log('[StructureEditor3D] Final scene state - children:', viewer.scene?.children?.length, 
+                'mesh:', viewer.mainMesh ? 'present' : 'missing');
   }
 
   // Update the 3D view when voxel data changes - using pipeline
@@ -2511,9 +2590,11 @@ export class SimplifiedTilesetEditor {
     const { StructureMeshPipeline } = await import('./utils/structure-mesh-pipeline.js');
     
     try {
-      // Update viewer using pipeline utility
-      await StructureMeshPipeline.updateViewerWithStructure(viewer, voxelData, materialFactory);
-      console.log('[StructureEditor3D] Updated with authentic WFC mesh using pipeline');
+      // Update viewer using pipeline utility - explicitly pass production settings
+      await StructureMeshPipeline.updateViewerWithStructure(viewer, voxelData, materialFactory, {
+        unit: 3
+      });
+      console.log('[StructureEditor3D] Updated with authentic WFC mesh using pipeline (production mode)');
     } catch (error) {
       throw new Error(`[StructureEditor3D] Failed to update mesh: ${error.message}`);
     }

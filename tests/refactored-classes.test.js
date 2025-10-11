@@ -98,8 +98,26 @@ class MockGroup {
     this.children = [];
     this.position = new MockVector3();
     this.rotation = { x: 0, y: 0, z: 0 };
+    this.isGroup = true;
   }
   add(obj) { this.children.push(obj); }
+  clone(deep = true) {
+    const cloned = new MockGroup();
+    if (deep) {
+      this.children.forEach(child => {
+        if (child && typeof child.clone === 'function') {
+          cloned.add(child.clone(true));
+        } else if (child && typeof child === 'object') {
+          cloned.add({ ...child });
+        } else {
+          cloned.add(child);
+        }
+      });
+    } else {
+      cloned.children = [...this.children];
+    }
+    return cloned;
+  }
 }
 
 class MockMesh {
@@ -108,6 +126,12 @@ class MockMesh {
     this.material = material;
     this.position = new MockVector3();
     this.rotation = { x: 0, y: 0, z: 0 };
+  }
+  clone() {
+    const cloned = new MockMesh(this.geometry, this.material);
+    cloned.position = this.position.clone ? this.position.clone() : new MockVector3(this.position.x, this.position.y, this.position.z);
+    cloned.rotation = { ...this.rotation };
+    return cloned;
   }
 }
 

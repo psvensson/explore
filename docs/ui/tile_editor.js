@@ -6,6 +6,7 @@
 
 import { UIUtils } from './ui_utils.js';
 import { TileStructures } from '../dungeon/tile_structures.js';
+import { StructurePreviewUtil } from './utils/structure-preview-util.js';
 import { TileMetadata } from '../dungeon/tile_metadata.js';
 import { TilePackages } from '../dungeon/tile_packages.js';
 
@@ -156,11 +157,12 @@ export class TileEditor {
         if (!structureSelect) return;
 
         // Get available structures from TileStructures
-        const structures = Object.keys(TileStructures.registry);
-        structures.forEach(structure => {
+        // Use canonical TileStructures API; registry may not exist in new unified system
+        const structureNames = TileStructures.getNames ? TileStructures.getNames() : Object.keys(TileStructures.structures || {});
+        structureNames.forEach(name => {
             const option = document.createElement('option');
-            option.value = structure;
-            option.textContent = structure.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            option.value = name;
+            option.textContent = name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             structureSelect.appendChild(option);
         });
     }
@@ -215,10 +217,26 @@ export class TileEditor {
         let info = '<div class="package-preview"><h5>Tile Preview</h5>';
         
         // Get structure info
-        const structureData = TileStructures.registry[structure];
+        let structureData = null;
+        try {
+            console.log(`[TileEditor] Attempting to load structure: '${structure}'`);
+            structureData = TileStructures.getWithLegacyLayers ? TileStructures.getWithLegacyLayers(structure) : (TileStructures.get ? TileStructures.get(structure) : null);
+            console.log(`[TileEditor] Loaded structureData for '${structure}':`, JSON.parse(JSON.stringify(structureData || {})));
+        } catch (e) {
+            console.warn('[TileEditor] Could not load structure', structure, e);
+        }
         if (structureData) {
+            // Derive legacy layer strings for preview irrespective of source form
+            const layers = structureData.layers || StructurePreviewUtil.numericToStringLayers(structureData) || [];
+            console.log(`[TileEditor] Derived layers for '${structure}':`, layers);
             info += `<p><strong>Structure:</strong> ${structure}</p>`;
-            info += `<p><strong>Size:</strong> ${structureData.width}x${structureData.height}x${structureData.depth}</p>`;
+            if (layers.length === 3) {
+                info += '<div class="layered-structure-preview">' + layers.map((layer, idx) => {
+                    return `<div class="layer-preview-row"><strong>${['Floor','Middle','Ceiling'][idx]||'Layer'}:</strong> ${layer}</div>`;
+                }).join('') + '</div>';
+            }
+        } else {
+            info += `<p><em>Structure data unavailable</em></p>`;
         }
 
         // Get weight info

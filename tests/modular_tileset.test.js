@@ -11,10 +11,9 @@ describe('Modular Tileset Architecture', () => {
             
             expect(structures).toHaveProperty('corridor_nsew');
             expect(structures).toHaveProperty('corridor_ns');
-            expect(structures).toHaveProperty('corridor_ew');
             expect(structures).toHaveProperty('corridor_nse');
             expect(structures).toHaveProperty('corner_ne');
-            expect(structures).toHaveProperty('room_3x3');
+            expect(structures).toHaveProperty('open_space_3x3');
             expect(structures).toHaveProperty('stair_up');
             expect(structures).toHaveProperty('stair_down');
             
@@ -32,7 +31,7 @@ describe('Modular Tileset Architecture', () => {
         test('should provide structure transformations (rotations)', () => {
             const corridorNS = TileStructures.get('corridor_ns');
             const rotated = TileStructures.rotate(corridorNS, 90);
-            
+            // Rotation should change orientation but preserve structure integrity
             expect(rotated.edges).not.toEqual(corridorNS.edges);
             // Rotation should change orientation but preserve structure integrity
         });

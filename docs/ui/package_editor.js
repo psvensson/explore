@@ -8,6 +8,7 @@
 import { TileStructures } from '../dungeon/tile_structures.js';
 import { TileMetadata } from '../dungeon/tile_metadata.js';
 import { TilePackages } from '../dungeon/tile_packages.js';
+import { StructurePreviewUtil } from './utils/structure-preview-util.js';
 
 export class TilePackageEditor {
     
@@ -259,26 +260,9 @@ export class TilePackageEditor {
     }
 
     renderStructurePreview(structureName) {
-        // Simple ASCII preview of the structure
         try {
             const structure = TileStructures.getStructure(structureName);
-            if (!structure || !structure.layers || structure.layers.length < 2) {
-                return '<div class="preview-error">No preview</div>';
-            }
-            
-            // Show the middle layer as a simple grid
-            const middleLayer = structure.layers[1];
-            return `
-                <div class="ascii-preview">
-                    ${middleLayer.map(row => `
-                        <div class="preview-row">
-                            ${row.split('').map(cell => `
-                                <span class="preview-cell ${cell === '0' ? 'open' : 'wall'}">${cell === '0' ? '·' : '█'}</span>
-                            `).join('')}
-                        </div>
-                    `).join('')}
-                </div>
-            `;
+            return StructurePreviewUtil.renderAsciiMiddle(structure);
         } catch (error) {
             return '<div class="preview-error">Error</div>';
         }

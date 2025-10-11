@@ -151,7 +151,31 @@ function wireInput({controls, fps, renderer, keyState, orbitCamera}){
 
 const lockPointer = (renderer)=>{ const el=renderer.domElement; if (el.requestPointerLock) el.requestPointerLock(); };
 const unlockPointer = ()=>{ if (document.exitPointerLock) document.exitPointerLock(); };
-function makeInstance({scene, orbitCamera, fpsCamera, renderer, controls, THREE, fps}){ return { scene, camera:orbitCamera, orbitCamera, fpsCamera, renderer, controls, get mode(){return fps.mode;}, THREE, _keyState:{}, fps }; }
+function makeInstance({scene, orbitCamera, fpsCamera, renderer, controls, THREE, fps}){ 
+  // Add editor-specific groups to scene
+  const editorTiles = new THREE.Group();
+  editorTiles.name = 'EditorTiles';
+  editorTiles.visible = false;
+  scene.add(editorTiles);
+  
+  return { 
+    scene, 
+    camera:orbitCamera, 
+    orbitCamera, 
+    fpsCamera, 
+    renderer, 
+    canvas: renderer.domElement, // Expose canvas for map editor
+    controls, 
+    get mode(){return fps.mode;}, 
+    THREE, 
+    _keyState:{}, 
+    fps,
+    editorTiles,
+    editorMode: false,
+    gridHelper: null,
+    tileGroup: null
+  }; 
+}
 
 function attachPublicAPIs(instance){
   const { orbitCamera, controls } = instance;
@@ -159,6 +183,107 @@ function attachPublicAPIs(instance){
   instance.setZoomDistance = (dist)=>{ const tgt=controls.target.clone(); const dir=orbitCamera.position.clone().sub(tgt).normalize(); const clamp=Math.min(Math.max(dist, controls.minDistance||5), controls.maxDistance||300); orbitCamera.position.copy(dir.multiplyScalar(clamp).add(tgt)); controls.update(); };
   instance.pan = (dx,dy)=>{ const dist=orbitCamera.position.distanceTo(controls.target); const s=dist*0.0015; const x=-dx*s, y=dy*s; const te=orbitCamera.matrix.elements; const right=new instance.THREE.Vector3(te[0],te[1],te[2]).multiplyScalar(x); const up=new instance.THREE.Vector3(te[4],te[5],te[6]).multiplyScalar(y); controls.target.add(right).add(up); orbitCamera.position.add(right).add(up); controls.update(); };
   instance.rebuildTileIdOverlays = ()=> rebuildTileIdOverlays(instance);
+  
+  // Editor mode APIs
+  instance.setEditorMode = (enabled) => {
+    instance.editorMode = enabled;
+    
+    if (enabled) {
+      // Hide WFC-generated dungeon
+      if (instance.tileGroup) instance.tileGroup.visible = false;
+      
+      // Show editor tiles
+      instance.editorTiles.visible = true;
+      
+      // Add grid helper if not exists
+      if (!instance.gridHelper) {
+        instance.gridHelper = new instance.THREE.GridHelper(90, 10, 0x444444, 0x222222);
+        instance.gridHelper.position.y = 0;
+        instance.scene.add(instance.gridHelper);
+      }
+      instance.gridHelper.visible = true;
+      
+    } else {
+      // Restore normal mode
+      if (instance.tileGroup) instance.tileGroup.visible = true;
+      instance.editorTiles.visible = false;
+      if (instance.gridHelper) instance.gridHelper.visible = false;
+    }
+  };
+  
+  instance.renderEditorTile = async (tile) => {
+    const { StructureMeshPipeline } = await import('../ui/utils/structure-mesh-pipeline.js');
+    const { DEFAULT_TILE_STRUCTURES } = await import('../dungeon/defaults/default_tile_structures.js');
+    
+    const mesh = await StructureMeshPipeline.createMeshFromStructureId(
+      instance.THREE,
+      tile.structureId,
+      DEFAULT_TILE_STRUCTURES
+    );
+    
+    // Apply rotation (Y-axis)
+    mesh.rotation.y = instance.THREE.MathUtils.degToRad(tile.rotation);
+    
+    // Position on grid (9-unit spacing for 3×3×3 tiles with unit=3)
+    mesh.position.set(
+      tile.position.x * 9,
+      tile.position.y * 9,
+      tile.position.z * 9
+    );
+    
+    mesh.userData.tileId = tile.id;
+
+    // Propagate tileId to all child meshes for selection/highlight
+    mesh.traverse((child) => {
+      if (child.isMesh) {
+        child.userData.tileId = tile.id;
+        // Clone material to ensure unique emissive state per tile
+        if (child.material) {
+          const oldUUID = child.material.uuid;
+          child.material = child.material.clone();
+          console.log('[Renderer] Cloned material for mesh:', child.name || '(unnamed)', {
+            tileId: tile.id,
+            oldUUID,
+            newUUID: child.material.uuid
+          });
+        }
+      }
+    });
+
+    instance.editorTiles.add(mesh);
+    
+    return mesh;
+  };
+  
+  instance.clearEditorTiles = () => {
+    while (instance.editorTiles.children.length > 0) {
+      instance.editorTiles.remove(instance.editorTiles.children[0]);
+    }
+  };
+  
+    instance.removeEditorTile = (tileId) => {
+      const mesh = instance.editorTiles.children.find(
+        child => child.userData.tileId === tileId
+      );
+      if (mesh) instance.editorTiles.remove(mesh);
+    };
+
+    // Helper: get all meshes belonging to a specific tileId (tighter filtering)
+    instance.getMeshesByTileId = (tileId) => {
+      const matches = [];
+      instance.editorTiles.children.forEach(child => {
+        if (child.userData.tileId === tileId) {
+          // Include the root mesh and its submeshes
+          child.traverse(sub => {
+            if (sub.isMesh && sub.userData.tileId === tileId) {
+              matches.push(sub);
+            }
+          });
+        }
+      });
+      return matches;
+    };
+  
   if (typeof window!=='undefined'){ window.dungeonRenderer=instance; exposeGeneration(instance); }
 }
 
@@ -187,12 +312,10 @@ function exposeGeneration(instance){
           throw new Error(`Simplified tileset '${tileset}' not found`);
         }
       } catch (simplifiedError) {
-        console.warn(`[WFC] Failed to load simplified tileset '${tileset}':`, simplifiedError.message);
-        console.log('[WFC] Falling back to legacy tileset system');
-        
-        // Fallback to legacy tileset system
-        tilesetMod.initializeTileset();
-        protos = tilesetMod.tilePrototypes;
+  console.warn(`[WFC] Failed to load simplified tileset '${tileset}':`, simplifiedError.message);
+  // Single path: ensure tileset initialized and retry simplified conversion
+  tilesetMod.initializeTileset();
+  protos = tilesetMod.tilePrototypes; // Single unified prototype set
       }
       const rng=(()=>{ let s=Date.now()%1e9; return ()=> (s=(s*1664525+1013904223)%4294967296)/4294967296; })();
   // Important: dims are in tile units, not voxel units. Avoid multiplying by 3 here.
@@ -200,7 +323,7 @@ function exposeGeneration(instance){
   if (currentAbort) { try{ currentAbort.abort(); }catch(_){} }
   currentAbort = new AbortController();
   const { grid, grid3D, tiles } = await generateWFCDungeon({
-    NDWFC3D: window.NDWFC3D||function(){},
+    ...(window.NDWFC3D ? { NDWFC3D: window.NDWFC3D } : {}),
     tileset:{ prototypes:protos },
     dims:{ x, y, z },
     rng,

@@ -90,21 +90,21 @@ describe('User Workflow Fix - Tileset Modification Persistence', () => {
     
     // === STEP 2: Add 2 new tiles (simulates user selecting additional structures) ===
     console.log('Step 2: Adding 2 new tiles to selection...');
-    editor.selectedStructures.add('corridor_ns');
-    editor.selectedStructures.add('corridor_ew');
+  editor.selectedStructures.add('corridor_ns');
+  // East-west corridor now implied via rotation of corridor_ns; no separate id
     
     // This should trigger live preview update in real UI
     editor.saveWorkInProgress(true); // Mark as modification
     
     // Verify selection state
-    expect(editor.selectedStructures.size).toBe(8);
+  expect(editor.selectedStructures.size).toBe(7);
     console.log(`✓ Selection now contains ${editor.selectedStructures.size} tiles`);
     
     // === STEP 3: Generate live preview (what user sees in summary) ===
     console.log('Step 3: Generating live preview...');
     preview = editor.generatePreviewTileset();
     expect(preview).not.toBeNull();
-    expect(preview.tiles.length).toBe(8); // Should show 8, not 6!
+  expect(preview.tiles.length).toBe(7); // Should show 7, not 6!
     console.log(`✓ Live preview shows ${preview.tiles.length} tiles (fixed!)`);
     
     // Verify preview contains all selected structures
@@ -112,7 +112,7 @@ describe('User Workflow Fix - Tileset Modification Persistence', () => {
     expect(previewStructures.has('wall')).toBe(true);
     expect(previewStructures.has('floor')).toBe(true);
     expect(previewStructures.has('corridor_ns')).toBe(true);
-    expect(previewStructures.has('corridor_ew')).toBe(true);
+  // corridor_ew removed; rotation handled via metadata
     console.log('✓ Preview contains all selected structures');
     
     // === STEP 4: Verify work-in-progress persistence ===
@@ -122,7 +122,7 @@ describe('User Workflow Fix - Tileset Modification Persistence', () => {
     const wipData = editor.getWorkInProgressTileset();
     expect(wipData).not.toBeNull();
     expect(wipData.selectedStructures).toBeDefined();
-    expect(wipData.selectedStructures.length).toBe(8);
+  expect(wipData.selectedStructures.length).toBe(7);
     expect(wipData.isModification).toBe(true);
     console.log('✓ Work-in-progress data saved correctly');
     
@@ -133,8 +133,8 @@ describe('User Workflow Fix - Tileset Modification Persistence', () => {
     // This is what the user sees in the "summary" at the bottom
     const finalPreview = editor.generatePreviewTileset();
     expect(finalPreview).not.toBeNull();
-    expect(finalPreview.tiles.length).toBe(8); // Should be 8, not 6!
-    console.log(`✓ Final verification: preview shows ${finalPreview.tiles.length} tiles (user issue FIXED!)`);
+  expect(finalPreview.tiles.length).toBe(7); // Should be 7, not 6!
+  console.log(`✓ Final verification: preview shows ${finalPreview.tiles.length} tiles (user issue FIXED!)`);
     
     console.log('✓ User workflow fix verified: Load → Modify → Preview shows correct count!');
   });
@@ -158,7 +158,7 @@ describe('User Workflow Fix - Tileset Modification Persistence', () => {
     editor.selectedStructures.add('wall');
     editor.selectedStructures.add('floor');
     editor.selectedStructures.add('door_ns');
-    editor.selectedStructures.add('door_ew');
+  editor.selectedStructures.add('door_ew'); // rotation-managed corridors only
     editor.selectedStructures.add('corner_ne');
     editor.selectedStructures.add('corner_sw');
     

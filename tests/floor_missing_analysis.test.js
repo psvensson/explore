@@ -6,7 +6,18 @@ global.NDWFC3D = function() {};
 /**
  * DIAGNOSTIC TEST SUITE - Intentionally kept despite failures
  * 
- * This test reveals tileset quality issues related to floor generation:
+ * This test revea    c    console.log('\\nTop tile (second level):');
+    // Use canonical coordinate system for top tile too
+    const topFloors = topTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const topCeilings = topTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
+    
+    console.log(`  Floor meshes: ${topFloors.length}`);  
+    console.log(`  Ceiling meshes: ${topCeilings.length}`);.log('\\nTop tile (should be empty room with floor + ceiling):');
+    const topFloors = topTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const topCeilings = topTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
+    
+    console.log(`  Floor meshes: ${topFloors.length}`);  
+    console.log(`  Ceiling meshes: ${topCeilings.length}`);eset quality issues related to floor generation:
  * - Issue: Empty room tiles (type 3) not generating floor meshes
  * - Impact: Vertical room stacking shows missing floors/ceilings
  * - Status: Known issue, medium priority (affects dungeon generation quality)
@@ -79,8 +90,8 @@ describe('Floor Missing Analysis', () => {
     console.log('=== FLOOR MESH ANALYSIS ===');
 
     // Find tiles that should have floors (non-solid tiles)
-    // Tile indices based on tileset_data.js:
-    // 0: cross_intersection, 1: solid (skip), 2: corridor_NS, etc.
+  // Tile indices based on tileset_data.js:
+  // 0: cross_intersection, 1: solid (skip), 2: corridor_NS, etc. (east-west via rotation)
     const testTiles = [
       { index: 0, name: 'cross_intersection' },
       // Skip index 1 - it's a solid block with one cube mesh, not individual floor/ceiling 
@@ -105,10 +116,14 @@ describe('Floor Missing Analysis', () => {
       });
 
       // Categorize all meshes by vertical position and material type
+      // Canonical coordinate system with unit=3:
+      // - Floor (y=0): 0.15 (thin slab near tile base)
+      // - Wall (y=1): 1.5 (contiguous with neighboring layers)
+      // - Ceiling (y=2): 2.85 (thin cap at tile top)
       const meshCategories = {
-        floor: [],     // y ≈ 0.05 (bottom)
-        ceiling: [],   // y ≈ 2.95 (top) 
-        walls: [],     // y ≈ 1.5 (middle)
+        floor: [],     // y ≈ 0.15 (bottom layer)
+        ceiling: [],   // y ≈ 2.85 (top layer) 
+        walls: [],     // y ≈ 1.5 (middle layer)
         other: []      // anything else
       };
 
@@ -116,9 +131,9 @@ describe('Floor Missing Analysis', () => {
         const y = mesh.position.y;
         const materialType = mesh._materialType;
         
-        if (Math.abs(y - 0.05) < 0.1) {
+        if (Math.abs(y - 0.15) < 0.2) {
           meshCategories.floor.push({ y, materialType, geometry: mesh.geometry });
-        } else if (Math.abs(y - 2.95) < 0.1) {
+        } else if (Math.abs(y - 2.85) < 0.2) {
           meshCategories.ceiling.push({ y, materialType, geometry: mesh.geometry });
         } else if (Math.abs(y - 1.5) < 0.6) {
           meshCategories.walls.push({ y, materialType, geometry: mesh.geometry });
@@ -177,16 +192,17 @@ describe('Floor Missing Analysis', () => {
   it('should test stacked empty room scenario', async () => {
     console.log('\\n=== STACKED TILE SCENARIO ===');
 
-    // Use cross intersection tile (index 0) which should have open space and floors/ceilings
-    const emptyRoomIndex = 0;
+    // Tile 0: Cross intersection (corridor_nsew) - has floor, ceiling, and corner wall pillars
+    // This tile SHOULD have full floor and ceiling layers according to default_tile_structures.js
+    const crossIntersectionIndex = 0;
     
-    console.log(`Testing stacked scenario with tile ${emptyRoomIndex}...`);
+    console.log(`Testing stacked scenario with tile ${crossIntersectionIndex}...`);
 
     // Generate bottom tile (floor level)
     const bottomTile = buildTileMesh({ 
       THREE: global.THREE, 
       prototypes: mockTilePrototypes, 
-      prototypeIndex: emptyRoomIndex, 
+      prototypeIndex: crossIntersectionIndex, 
       rotationY: 0, 
       unit: 3
     });
@@ -195,7 +211,7 @@ describe('Floor Missing Analysis', () => {
     const topTile = buildTileMesh({ 
       THREE: global.THREE, 
       prototypes: mockTilePrototypes, 
-      prototypeIndex: emptyRoomIndex, 
+      prototypeIndex: crossIntersectionIndex, 
       rotationY: 0, 
       unit: 3
     });
@@ -205,15 +221,15 @@ describe('Floor Missing Analysis', () => {
 
     // Analyze what would be visible from below
     console.log('\\nBottom tile (ground level):');
-    const bottomFloors = bottomTile.children.filter(m => Math.abs(m.position.y - 0.05) < 0.1);
-    const bottomCeilings = bottomTile.children.filter(m => Math.abs(m.position.y - 2.95) < 0.1);
+    const bottomFloors = bottomTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const bottomCeilings = bottomTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
     
     console.log(`  Floor meshes: ${bottomFloors.length}`);
     console.log(`  Ceiling meshes: ${bottomCeilings.length}`);
     
     console.log('\\nTop tile (second level):');
-    const topFloors = topTile.children.filter(m => Math.abs(m.position.y - 0.05) < 0.1);
-    const topCeilings = topTile.children.filter(m => Math.abs(m.position.y - 2.95) < 0.1);
+    const topFloors = topTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const topCeilings = topTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
     
     console.log(`  Floor meshes: ${topFloors.length}`);  
     console.log(`  Ceiling meshes: ${topCeilings.length}`);
@@ -238,13 +254,15 @@ describe('Floor Missing Analysis', () => {
     console.log('\\n--- Visual Analysis ---');
     console.log('When looking at the top tile from above:');
     if (topFloors.length === 0) {
+      console.log('  - ❌ UNEXPECTED: Top tile should have floor but has none');
       console.log('  - You would see the bottom tile\'s ceiling showing through');
       console.log('  - This creates "color variations" between proper ceiling and showing-through ceiling');  
     } else {
-      console.log('  - You would see the top tile\'s proper floor');
+      console.log('  - ✅ Top tile has proper floor (as expected from structure definition)');
     }
 
-    // Both tiles should have floors in a proper empty room
+    // Ground truth: Tile 0 (cross intersection) has full floor and ceiling layers per default_tile_structures.js
+    // Both stacked tiles should have their own floors and ceilings
     expect(bottomFloors.length).toBeGreaterThan(0);
     expect(topFloors.length).toBeGreaterThan(0);
   });

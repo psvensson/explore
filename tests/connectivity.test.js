@@ -41,12 +41,10 @@ beforeAll(() => {
 // Helper function to generate WFC maps for testing
 async function generateTestMap(dimensions) {
   const tileset = { prototypeRotations: [], prototypes: tilePrototypes };
-  const NDWFC3D = (global.NDWFC3D || (() => {})); // Mock if not available
   const rng = () => Math.random();
   
   try {
     const result = await generateWFCDungeon({ 
-      NDWFC3D, 
       tileset, 
       dims: dimensions, 
       rng,

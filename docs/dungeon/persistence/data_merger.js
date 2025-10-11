@@ -5,8 +5,13 @@
  * provides a unified interface for data access, and handles persistence.
  */
 
-import { DEFAULT_TILE_STRUCTURES, BUILT_IN_STRUCTURE_IDS, isBuiltInStructure } from '../defaults/default_tile_structures.js';
-import { DEFAULT_TILESETS, BUILT_IN_TILESET_IDS, isBuiltInTileset } from '../defaults/default_tilesets.js';
+import { 
+    DEFAULT_TILE_STRUCTURES, 
+    isBuiltInStructure,
+    DEFAULT_TILESETS,
+    isBuiltInTileset,
+    listBuiltInStructureIds
+} from '../defaults/default_tile_structures.js';
 import { StorageManager } from './storage_manager.js';
 
 export class DataMerger {

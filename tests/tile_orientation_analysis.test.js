@@ -87,7 +87,6 @@ describe('Tile Orientation Analysis', () => {
     const testTiles = [
       { index: 0, name: 'solid' },
       { index: 2, name: 'corridor_NS' },
-      { index: 4, name: 'corridor_EW' },
       { index: 8, name: 'cross' }
     ];
 
@@ -268,9 +267,9 @@ describe('Tile Orientation Analysis', () => {
         materials: standardMaterials
       });
 
-      // Ceiling meshes are positioned at y = 2*unit + unit - h where h = unit*0.1
-      // For unit=3: y = 2*3 + 3 - 0.3 = 8.7
-      const expectedCeilingY = 8.7;
+  // Ceiling meshes with canonical coordinate system:
+  // Voxel y=2 (ceiling layer), unit=3: contiguous layout places center at ≈2.85
+  const expectedCeilingY = 2.85;
       const ceilingMeshes = tileMesh.children.filter(m => Math.abs(m.position.y - expectedCeilingY) < 0.1);
       const materials = new Set(ceilingMeshes.map(m => m.material.userData.type));
       

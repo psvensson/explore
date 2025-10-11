@@ -70,7 +70,7 @@ export function buildEdgePatternRules(tilePrototypes, { isolateStairs = true } =
       return null;
     }
     
-    // Handle both flat array (legacy) and 3D array formats
+  // Handle both flat array and 3D array formats
     let voxels3D;
     if (Array.isArray(proto.voxels) && typeof proto.voxels[0] === 'number') {
       // Flat array format - convert to 3D

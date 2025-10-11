@@ -9,15 +9,7 @@ const makeTileset = ()=> ({ prototypes: [
 const dims = { x:3, y:3, z:3 };
 const rng = () => Math.random();
 
-describe('generateWFCDungeon adapter', () => {
-  test('works with legacy run() API', async () => {
-    class LegacyModel { constructor(){ this.grid=new Array(27).fill(0); } run(){ return true; } }
-    const NDWFC3D = function(){ return new LegacyModel(); };
-    NDWFC3D.prototype = LegacyModel.prototype; // ensure instanceof semantics if any
-    const { grid } = await generateWFCDungeon({ NDWFC3D, tileset: makeTileset(), dims, rng });
-    expect(grid.length).toBe(27);
-  });
-
+describe('generateWFCDungeon adapter (single incremental path)', () => {
   test('works with expand/step API', async () => {
     class StepModel { constructor(){ this._expanded=false; this._steps=0; this._done=false; } expand(){ this._expanded=true; } step(){ this._steps++; if(this._steps>1){ this._done=true; return true;} return false; } readout(){ return { '0,0,0':0 }; } }
     const NDWFC3D = function(){ return new StepModel(); };
@@ -26,9 +18,9 @@ describe('generateWFCDungeon adapter', () => {
     expect(grid.length).toBe(27);
   });
 
-  test('falls back when NDWFC3D is a registration fn only', async () => {
+  test('throws when NDWFC3D lacks expand/step', async () => {
     const NDWFC3D = function registerOnly(){}; // no constructor behavior
-    const { grid } = await generateWFCDungeon({ NDWFC3D, tileset: makeTileset(), dims, rng });
-    expect(grid.length).toBe(27);
+    await expect(generateWFCDungeon({ NDWFC3D, tileset: makeTileset(), dims, rng }))
+      .rejects.toThrow('Unsupported NDWFC3D interface');
   });
 });

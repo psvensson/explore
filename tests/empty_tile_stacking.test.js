@@ -220,10 +220,10 @@ describe('Empty Tile Stacking Analysis', () => {
 
     topEmptyTile.position.set(0, 3, 0);
 
-    // Analyze the meshes
-    // For unit=3: floor at y≈0, ceiling at y=2*3+3-0.3=8.7
-    const bottomFloors = bottomWalkableTile.children.filter(m => Math.abs(m.position.y - 0.05) < 0.15);
-    const bottomCeilings = bottomWalkableTile.children.filter(m => Math.abs(m.position.y - 8.7) < 0.15);
+  // Analyze the meshes
+  // Canonical coordinates with unit=3: floor at y≈0.15, ceiling at y≈2.85
+    const bottomFloors = bottomWalkableTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const bottomCeilings = bottomWalkableTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
 
     console.log(`Bottom walkable tile: ${bottomWalkableTile.children.length} total meshes`);
     console.log(`  - Floor meshes: ${bottomFloors.length}`);
@@ -277,10 +277,10 @@ describe('Empty Tile Stacking Analysis', () => {
 
     topWalkableTile.position.set(0, 3, 0);
 
-    // Analyze the meshes
-    // For unit=3: floor at y≈0, ceiling at y=2*3+3-0.3=8.7
-    const topFloors = topWalkableTile.children.filter(m => Math.abs(m.position.y - 0.05) < 0.15);
-    const topCeilings = topWalkableTile.children.filter(m => Math.abs(m.position.y - 8.7) < 0.15);
+  // Analyze the meshes
+  // Canonical coordinates with unit=3: floor at y≈0.15, ceiling at y≈2.85
+    const topFloors = topWalkableTile.children.filter(m => Math.abs(m.position.y - 0.15) < 0.2);
+  const topCeilings = topWalkableTile.children.filter(m => Math.abs(m.position.y - 2.85) < 0.2);
 
     console.log(`Bottom empty tile: ${bottomEmptyTile.children.length} meshes`);
     console.log(`Top walkable tile: ${topWalkableTile.children.length} total meshes`);

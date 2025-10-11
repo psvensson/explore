@@ -166,7 +166,7 @@ export function initUI(rootId = 'control-panel') {
 
 
 
-  // Refresh tilesets button handler (legacy functionality)
+  // Refresh tilesets button handler
   document.addEventListener('click', (e) => {
     if (e.target.id === 'refresh-tilesets') {
       console.log('Refresh tilesets clicked - functionality moved to main tileset editor');

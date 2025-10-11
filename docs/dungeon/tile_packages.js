@@ -21,18 +21,11 @@ export class TilePackages {
                 properties: 'default'
             },
             
-            // Straight corridors
+            // Straight corridor (single base definition; east-west achieved via rotation metadata)
             {
                 structure_name: 'corridor_ns',
                 weight_package: 'balanced',
                 role_package: 'standard',
-                rotation: 0,
-                properties: 'default'
-            },
-            {
-                structure_name: 'corridor_ew',
-                weight_package: 'balanced',
-                role_package: 'standard', 
                 rotation: 0,
                 properties: 'default'
             },
@@ -99,7 +92,7 @@ export class TilePackages {
             
             // Room
             {
-                structure_name: 'room_3x3',
+                structure_name: 'open_space_3x3',
                 weight_package: 'balanced',
                 role_package: 'standard',
                 rotation: 0,
@@ -135,13 +128,6 @@ export class TilePackages {
             },
             {
                 structure_name: 'corridor_ns',
-                weight_package: 'high_connectivity',
-                role_package: 'standard',
-                rotation: 0,
-                properties: 'default'
-            },
-            {
-                structure_name: 'corridor_ew',
                 weight_package: 'high_connectivity',
                 role_package: 'standard',
                 rotation: 0,
@@ -236,13 +222,6 @@ export class TilePackages {
             },
             {
                 structure_name: 'corridor_ns',
-                weight_package: 'anti_clumping',
-                role_package: 'standard',
-                rotation: 0,
-                properties: 'default'
-            },
-            {
-                structure_name: 'corridor_ew',
                 weight_package: 'anti_clumping',
                 role_package: 'standard',
                 rotation: 0,
@@ -464,7 +443,7 @@ export class TilePackages {
             
             // Heavy focus on rooms
             {
-                structure_name: 'room_3x3',
+                structure_name: 'open_space_3x3',
                 weight_package: 'room_heavy',
                 role_package: 'standard',
                 rotation: 0,

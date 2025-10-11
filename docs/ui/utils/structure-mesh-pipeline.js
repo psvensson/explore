@@ -1,13 +1,84 @@
 // structure-mesh-pipeline.js
 // Centralized pipeline for converting structure data to THREE.js meshes
 
-import { VoxelCoordinateConverter } from '../../utils/voxel-coordinates.js';
+import { normalizeToCanonical } from '../../utils/voxel_normalize.js';
+import { dbg } from '../../utils/debug_log.js';
 
 /**
  * Centralized pipeline for structure-to-mesh conversion
  * Handles the complete flow: structure data → flat voxels → prototype → mesh
  */
 export class StructureMeshPipeline {
+  static _meshCache = new Map();
+  static _structureCacheIndex = new Map(); // structureId -> Set(cacheKeys)
+  static _cacheKeyToIds = new Map(); // cacheKey -> Set(structureIds)
+  static _debugCacheCollisions = false;
+  static enableCacheDebugging(flag = true) {
+    this._debugCacheCollisions = !!flag;
+  }
+  static clearMeshCache() {
+    this._meshCache.clear();
+    this._structureCacheIndex.clear();
+    this._cacheKeyToIds.clear();
+  }
+  static invalidateCacheForStructure(structureId) {
+    if (!structureId || !this._structureCacheIndex.has(structureId)) return;
+    const keys = this._structureCacheIndex.get(structureId);
+    for (const key of keys) {
+      this._meshCache.delete(key);
+      const idSet = this._cacheKeyToIds.get(key);
+      if (idSet) {
+        idSet.delete(structureId);
+        if (idSet.size === 0) {
+          this._cacheKeyToIds.delete(key);
+        }
+      }
+    }
+    this._structureCacheIndex.delete(structureId);
+  }
+  static _registerCacheKey(structureId, cacheKey) {
+    if (!structureId || !cacheKey) return;
+    let idKeys = this._structureCacheIndex.get(structureId);
+    if (!idKeys) {
+      idKeys = new Set();
+      this._structureCacheIndex.set(structureId, idKeys);
+    }
+    idKeys.add(cacheKey);
+
+    let idSet = this._cacheKeyToIds.get(cacheKey);
+    if (!idSet) {
+      idSet = new Set();
+      this._cacheKeyToIds.set(cacheKey, idSet);
+    }
+    if (this._debugCacheCollisions && !idSet.has(structureId) && idSet.size > 0) {
+      console.warn('[StructureMeshPipeline] Cache key collision detected', {
+        cacheKey,
+        existing: Array.from(idSet),
+        incoming: structureId
+      });
+    }
+    idSet.add(structureId);
+  }
+  static _computeSignature(voxels) {
+    return voxels
+      .map(layer => layer.map(row => row.join('')).join('|'))
+      .join('||');
+  }
+  static _buildCacheKey({ signature, prototypeId, unit }) {
+    return [signature, prototypeId, unit].join('::');
+  }
+  static _cloneMesh(mesh) {
+    if (!mesh) return mesh;
+    if (typeof mesh.clone === 'function') {
+      return mesh.clone(true);
+    }
+    // Fallback deep clone for mock objects in tests
+    const clone = { ...mesh };
+    if (Array.isArray(mesh.children)) {
+      clone.children = mesh.children.map(child => this._cloneMesh(child));
+    }
+    return clone;
+  }
   
   /**
    * Create a mesh from structure data
@@ -23,31 +94,73 @@ export class StructureMeshPipeline {
     const {
       materialFactory = null,
       unit = 3,
-      prototypeId = 'editor_preview'
+      prototypeId = 'editor_preview',
+      disableCache = false,
+      structureId = null
     } = options;
-    
-    // Import required modules
+
     const { buildTileMesh } = await import('../../renderer/wfc_tile_mesh.js');
     const { makeMaterialFactory } = await import('../../renderer/mesh_factories.js');
+
+    // 1. Normalize any incoming shape to canonical vox[z][y][x]
+    const canonical = normalizeToCanonical(structureData);
+
+    const cacheSignature = this._computeSignature(canonical);
+    const cacheKey = this._buildCacheKey({
+      signature: cacheSignature,
+      prototypeId,
+      unit
+    });
+
+    if (!disableCache && this._meshCache.has(cacheKey)) {
+      this._registerCacheKey(structureId, cacheKey);
+      return this._cloneMesh(this._meshCache.get(cacheKey));
+    }
+
+    // 2. Use canonical voxel data directly - no preprocessing or collapsing
+    // IMPORTANT: Solid voxels = geometry, Empty voxels = traversable space
+    // Each SOLID voxel should generate its own mesh cube for accurate representation
+    let working = canonical;
     
-    // Step 1: Convert structure data to flat voxel array
-    const flatVoxelData = this._normalizeToFlatArray(structureData);
-    
-    // Step 2: Convert flat array to WFC prototype format
-    const prototype = VoxelCoordinateConverter.flatToPrototype(flatVoxelData, prototypeId);
-    
-    // Step 3: Create or use material factory
+    // Note: Previous "smart" collapsing logic removed - it was inverting the representation
+    // by collapsing solid walls into simplified patterns. Now we render every solid voxel.
+
+    // 3. Wrap into prototype expected by buildTileMesh
+    const prototype = { id: prototypeId, voxels: working };
     const factory = materialFactory || makeMaterialFactory(THREERef);
-    
-    // Step 4: Build mesh using main renderer's tile mesh system
     const mesh = buildTileMesh({
       THREE: THREERef,
       prototypeIndex: 0,
       prototypes: [prototype],
-      unit: unit
+      unit
     });
-    
-    console.log('[StructureMeshPipeline] Created mesh from structure data');
+
+    // Ensure all materials and meshes carry the structureId for downstream tileId propagation
+    mesh.traverse((child) => {
+      if (child.isMesh) {
+        // Assign to userData
+        child.userData = child.userData || {};
+        child.userData.tileId = structureId;
+
+        // Assign to material(s)
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((mat) => (mat.tileId = structureId));
+          } else {
+            child.material.tileId = structureId;
+          }
+        }
+      }
+    });
+
+    if (!disableCache) {
+      this._meshCache.set(cacheKey, this._cloneMesh(mesh));
+      this._registerCacheKey(structureId, cacheKey);
+    }
+
+    // 4. Return mesh as-is - no post-processing or manipulation
+    // Each solid voxel generates its own cube for accurate voxel-to-geometry representation
+    dbg('StructureMeshPipeline:createMesh');
     return mesh;
   }
   
@@ -62,13 +175,12 @@ export class StructureMeshPipeline {
     if (!structure || !structure.structure) {
       throw new Error('[StructureMeshPipeline] Invalid structure object');
     }
-    
-    // Extract the first layer if structure is nested
-    const structureData = Array.isArray(structure.structure[0]) 
-      ? structure.structure[0] 
-      : structure.structure;
-    
-    return this.createMeshFromStructure(THREERef, structureData, options);
+    // Pass full structure (now always explicit 3-layer format) directly
+    const optsWithId = { ...options };
+    if (structure.id && !optsWithId.structureId) {
+      optsWithId.structureId = structure.id;
+    }
+    return this.createMeshFromStructure(THREERef, structure.structure, optsWithId);
   }
   
   /**
@@ -85,33 +197,10 @@ export class StructureMeshPipeline {
       throw new Error(`[StructureMeshPipeline] Structure not found: ${structureId}`);
     }
     
-    return this.createMeshFromStructureObject(THREERef, structure, options);
-  }
-  
-  /**
-   * Normalize structure data to flat array
-   * Handles both nested arrays and already-flat arrays
-   * @param {Array} structureData - Structure data in various formats
-   * @returns {Array} Flat voxel array (27 elements for 3×3×3)
-   * @private
-   */
-  static _normalizeToFlatArray(structureData) {
-    // If already flat (27 elements), return as-is
-    if (Array.isArray(structureData) && structureData.length === 27) {
-      return structureData;
-    }
-    
-    // If it's a nested structure (layers), flatten it
-    if (Array.isArray(structureData) && Array.isArray(structureData[0])) {
-      return VoxelCoordinateConverter.structureToFlat(structureData);
-    }
-    
-    // If it's some other format, try to flatten
-    if (Array.isArray(structureData)) {
-      return VoxelCoordinateConverter.structureToFlat(structureData);
-    }
-    
-    throw new Error('[StructureMeshPipeline] Unable to normalize structure data');
+    return this.createMeshFromStructureObject(THREERef, structure, {
+      ...options,
+      structureId: options?.structureId || structureId
+    });
   }
   
   /**
@@ -148,6 +237,8 @@ export class StructureMeshPipeline {
   static async updateViewerWithStructure(viewer, structureData, materialFactory, options = {}) {
     const THREERef = viewer.getTHREE();
     const mesh = await this.createMeshFromStructure(THREERef, structureData, {
+      unit: 3,
+      disableCache: true,
       ...options,
       materialFactory
     });
@@ -158,6 +249,4 @@ export class StructureMeshPipeline {
 }
 
 // Node.js compatibility guard
-if (typeof window !== 'undefined') {
-  console.log('[StructureMeshPipeline] Structure mesh pipeline loaded');
-}
+if (typeof window !== 'undefined') { dbg('StructureMeshPipeline:loaded'); }

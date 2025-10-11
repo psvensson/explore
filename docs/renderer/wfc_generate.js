@@ -27,8 +27,8 @@ const nextTick = () => new Promise(res => {
 });
 
 // Generate a dungeon using the incremental NDWFC API (expand + step loop).
-// Adapts previous model.run() expectation to the existing ndwfc.js engine.
-export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=60000, maxYields=Infinity, signal, debug, centerSeed=true } ) {
+// Requires an engine that implements expand()/step() (defaults to bundled ndwfc.js).
+export async function generateWFCDungeon({ NDWFC3D = WFC, tileset, dims, rng, yieldEvery=500, maxSteps=50000, stallTimeoutMs=60000, maxYields=Infinity, signal, debug, centerSeed=true } ) {
   const log = makeLogger('WFC', debug);
   const { prototypes, symmetryTransforms } = tileset;
   const dataSize = dims.x * dims.y * dims.z;
@@ -67,22 +67,16 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
     throw new Error(msg);
   }
 
-  // --- Instantiate model across possible legacy interfaces ---
-  let model = null;
-  let ctorError = null;
-  if (NDWFC3D) {
-    try { model = new NDWFC3D({ nd: 3, weights, rules, wave: initialWave }); } catch(e){ ctorError = e; log('ctor-error', String(e)); }
+  // Instantiate model (requires expand()/step()).
+  let model;
+  try {
+    model = new NDWFC3D({ nd: 3, weights, rules, wave: initialWave });
+  } catch (error) {
+    log('ctor-error', String(error));
+    throw error;
   }
-  // If NDWFC3D was a registration function (not a constructor) model may be undefined or missing methods.
-  const hasExpand = model && typeof model.expand === 'function' && typeof model.step === 'function';
-  const hasRun = model && typeof model.run === 'function';
-  if (!hasExpand && !hasRun) {
-    // Fallback: direct use of embedded WFC implementation.
-    model = new WFC({ nd:3, weights, rules, wave: initialWave });
-  }
-  log('api', { path: hasExpand? 'incremental' : (hasRun? 'legacy-run' : 'embedded') });
+  log('api', { path: 'incremental' });
 
-  // Prefer incremental path (expand/step) to avoid blocking the browser; otherwise, use legacy run().
   if (typeof model.expand === 'function' && typeof model.step === 'function') {
     log('expand:start');
     model.expand([0,0,0],[dims.x,dims.y,dims.z]);
@@ -132,13 +126,8 @@ export async function generateWFCDungeon({ NDWFC3D, tileset, dims, rng, yieldEve
       throw new Error('WFC collapse (step) exceeded iteration cap');
     }
     log('done', { steps });
-  } else if (typeof model.run === 'function') {
-    log('run:start', { maxSteps });
-    const ok = model.run(maxSteps);
-    log('run:done', { ok });
-    if (!ok) throw new Error('WFC collapse (run) failed or exceeded iteration cap');
   } else {
-    throw new Error('Unsupported NDWFC3D interface: missing run() and expand()/step()');
+    throw new Error('Unsupported NDWFC3D interface: missing expand()/step()');
   }
 
   const wave = typeof model.readout === 'function' ? model.readout() : null;

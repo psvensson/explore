@@ -6,6 +6,7 @@
  */
 
 import { UIUtils } from './ui_utils.js';
+import { StructurePreviewUtil } from './utils/structure-preview-util.js';
 
 export class StructureEditor {
     constructor(container) {
@@ -23,9 +24,9 @@ export class StructureEditor {
             name: '',
             description: '',
             layers: [
-                ["111", "111", "111"],  // Floor
-                ["101", "000", "101"],  // Middle (corridor shape)
-                ["111", "111", "111"]   // Ceiling
+                ["111", "111", "111"],  // Floor (solid mass)
+                ["111", "000", "111"],  // Middle: east-west corridor (walls north/south, open path through center row)
+                ["111", "111", "111"]   // Ceiling (solid mass)
             ],
             transforms: [],
             category: 'corridor'
@@ -148,7 +149,8 @@ export class StructureEditor {
             // Load default structures from the system
             const { TileStructures } = await import('../dungeon/tile_structures.js');
             
-            Object.entries(TileStructures.STRUCTURES).forEach(([name, structure]) => {
+            const sourceStructs = TileStructures.STRUCTURES || TileStructures.structures || {};
+            Object.entries(sourceStructs).forEach(([name, structure]) => {
                 const card = document.createElement('div');
                 card.className = 'structure-card';
                 card.innerHTML = `
@@ -297,15 +299,7 @@ export class StructureEditor {
     }
 
     renderMiniPreview(structure) {
-        return `
-            <div class="mini-preview">
-                ${structure.layers[1].map(row => 
-                    `<div class="mini-row">${row.split('').map(cell => 
-                        `<span class="mini-cell mini-cell-${cell}"></span>`
-                    ).join('')}</div>`
-                ).join('')}
-            </div>
-        `;
+        return StructurePreviewUtil.renderMini(structure);
     }
 
     cloneStructure(name) {

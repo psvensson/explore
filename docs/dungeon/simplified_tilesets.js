@@ -5,6 +5,7 @@
 
 // Import existing tile structures
 import { TileStructures } from './tile_structures.js';
+import { VOXEL } from '../utils/voxel_constants.js';
 
 /**
  * Create and validate a      // Create floor and ceiling layers - ALL tiles (except stairs) have solid 3x3 floors and ceilings
@@ -54,7 +55,7 @@ export const SIMPLIFIED_TILESETS = {
     tiles: [
       // Rooms - lower weight for fewer rooms
       {
-        structure: 'room_3x3',
+        structure: 'open_space_3x3',
         weight: 2,
         rotations: [0, 90, 180, 270]
       },
@@ -102,7 +103,7 @@ export const SIMPLIFIED_TILESETS = {
     description: 'Only room tiles for testing room generation',
     tiles: [
       {
-        structure: 'room_3x3',
+        structure: 'open_space_3x3',
         weight: 5,
         rotations: [0, 90, 180, 270]
       },
@@ -243,33 +244,34 @@ export const convertTilesetForWFC = (tileset) => {
     const structure = TileStructures.structures[tile.structure];
     if (!structure) return;
     
-    // Convert TileStructures 2D format to WFC-compatible 3D layers format
-    const expand2DTo3DVoxels = (structure2D) => {
-      // TileStructures uses single-layer format like [[[0,1,0],[1,1,1],[0,1,0]]]
-      // WFC expects 3 layers of string arrays: [["111","111","111"], ["101","000","101"], ["111","111","111"]]
-      
-      const layer2D = structure2D[0]; // Get the 2D structure pattern
-      
-      // Convert number arrays to string format, but INVERT the pattern!
-      // TileStructures defines obstructions (1=wall), but WFC expects walkable space patterns
-      const convertToStringRows = (layer) => {
-        return layer.map(row => row.map(cell => (1 - cell).toString()).join(''));
-      };
-      
-      const middleLayer = convertToStringRows(layer2D); // Inverted structure pattern as strings
-      
-      // Create floor and ceiling layers - ALL tiles (except stairs) have solid 3x3 floors and ceilings
-      const floorLayer = ['111', '111', '111'];   // Always solid floor
-      const ceilingLayer = ['111', '111', '111']; // Always solid ceiling
-      
-      return [floorLayer, middleLayer, ceilingLayer];
+    // Normalize any structure representation to string-based 3-layer voxel rows.
+    const toStringRows = (layer) => layer.map(row => row.map(cell => cell === VOXEL.SOLID ? '1' : (cell === VOXEL.EMPTY ? '0' : (cell === VOXEL.STAIR ? '2' : '0'))).join(''));
+    const toStringRowsInverted = (layer) => layer.map(row => row.map(cell => cell === VOXEL.SOLID ? '0' : (cell === VOXEL.EMPTY ? '1' : (cell === VOXEL.STAIR ? '2' : '0'))).join(''));
+
+  const expandStructure = (rawStruct) => {
+      // If already 3 layers: assume canonical [floor, mid, ceiling]
+      if (rawStruct.length === 3 && Array.isArray(rawStruct[0]) && Array.isArray(rawStruct[1]) && Array.isArray(rawStruct[2])) {
+        const floor = toStringRows(rawStruct[0]);
+        const midLayer = toStringRows(rawStruct[1]);
+        const ceiling = toStringRows(rawStruct[2]);
+        return [floor, midLayer, ceiling];
+      }
+      // Fallback: legacy single-layer definition inside outer array
+      if (rawStruct.length === 1) {
+        const layer2D = rawStruct[0];
+        const midLayer = toStringRows(layer2D);
+        const floorLayer = ['111','111','111'];
+        const ceilingLayer = ['111','111','111'];
+        return [floorLayer, midLayer, ceilingLayer];
+      }
+      throw new Error('Unsupported structure format for tileset conversion');
     };
     
     // Create prototype for each allowed rotation
     tile.rotations.forEach(rotation => {
       prototypes.push({
         tileId: tileIdCounter++,
-        voxels: expand2DTo3DVoxels(structure.structure),
+  voxels: expandStructure(structure.structure),
         meta: {
           weight: tile.weight,
           sourceStructure: tile.structure,

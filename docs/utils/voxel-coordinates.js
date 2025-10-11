@@ -65,19 +65,34 @@ export class VoxelCoordinateConverter {
       return new Array(27).fill(0);
     }
     
-    // Flatten each layer into the flat array
     for (let layer = 0; layer < structure.length; layer++) {
-      if (Array.isArray(structure[layer])) {
-        flatData.push(...structure[layer]);
+      const rows = structure[layer];
+      if (!Array.isArray(rows)) continue;
+      
+      for (let row = 0; row < rows.length; row++) {
+        const rawCols = rows[row];
+        if (!Array.isArray(rawCols) && typeof rawCols !== 'string') continue;
+
+        const cols = Array.isArray(rawCols) ? rawCols : rawCols.split('');
+        
+        for (let col = 0; col < cols.length; col++) {
+          const value = cols[col];
+          if (typeof value === 'number') {
+            flatData.push(value);
+          } else if (typeof value === 'string') {
+            flatData.push(parseInt(value, 10) || 0);
+          } else {
+            flatData.push(0);
+          }
+        }
       }
     }
     
-    // Ensure we have 27 elements (3x3x3)
     while (flatData.length < 27) {
       flatData.push(0);
     }
     
-    return flatData.slice(0, 27); // Ensure exactly 27 elements
+    return flatData.slice(0, 27);
   }
   
   /**

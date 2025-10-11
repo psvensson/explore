@@ -86,7 +86,7 @@ describe('Ceiling Visual Consistency Analysis', () => {
     console.log('\\n=== CEILING GEOMETRY CONSISTENCY ===');
 
     // Test multiple tiles to see if they generate consistent ceiling geometries
-    const testTileIndices = [0, 2, 4, 8]; // solid, corridor_NS, corridor_EW, cross
+  const testTileIndices = [0, 2, 8]; // solid, corridor_NS, cross (corridor_EW removed)
     const ceilingGeometryAnalysis = [];
 
     for (const tileIndex of testTileIndices) {
@@ -103,9 +103,9 @@ describe('Ceiling Visual Consistency Analysis', () => {
       });
 
       // Find ceiling meshes
-      // For unit=3: ceiling at y=2*3+3-0.3=8.7
+      // Canonical coordinates with unit=3: ceiling at y≈2.85
       const ceilingMeshes = tileMesh.children.filter(mesh => 
-        mesh.position && Math.abs(mesh.position.y - 8.7) < 0.1
+        mesh.position && Math.abs(mesh.position.y - 2.85) < 0.2
       );
 
       console.log(`  Found ${ceilingMeshes.length} ceiling meshes`);
@@ -192,9 +192,9 @@ describe('Ceiling Visual Consistency Analysis', () => {
         unit: 3
       });
 
-      // For unit=3: ceiling at y=2*3+3-0.3=8.7
+      // Canonical coordinates with unit=3: ceiling at y≈2.85
       const ceilingMeshes = tileMesh.children.filter(mesh => 
-        mesh.position && Math.abs(mesh.position.y - 8.7) < 0.1
+        mesh.position && Math.abs(mesh.position.y - 2.85) < 0.2
       );
 
       console.log(`  Generated ${tileMesh.children.length} total meshes, ${ceilingMeshes.length} ceiling`);

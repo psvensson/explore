@@ -5,6 +5,13 @@
 
 import { tilePrototypes } from '../dungeon/tileset.js';
 import { makeGeometryFactory, makeMaterialFactory, isAllSolid, buildStairs, getMaterialCache } from './mesh_factories.js';
+// New (non-breaking) optional modules
+import { dbg } from '../utils/debug_log.js';
+import { buildFloor, buildCeiling, buildSolidCube } from './mesh_geometry_builders.js';
+import { 
+  voxelToWorldCenter, 
+  getStandardCubeDimensions 
+} from '../utils/voxel-to-world.js';
 
 // --- Rotation Helpers (Y axis only, matching tileset usage) ---
 export function rotateYOnce(vox){
@@ -165,42 +172,61 @@ const stairDir=(proto,vox)=>{ if(!hasStairVoxel(vox)) return null; if(proto.meta
 const classifyMid=(vox,x,y,z,hasStairs)=>{ if(y!==1) return null; if(hasStairs && x===1 && z===1) return 'skip'; const hx=(x>0&&vox[z][y][x-1]>0)||(x<2&&vox[z][y][x+1]>0); const hz=(z>0&&vox[z-1][y][x]>0)||(z<2&&vox[z+1][y][x]>0); if(hx&&!hz) return 'wall_xMajor'; if(hz&&!hx) return 'wall_zMajor'; return 'wall_both'; };
 function skipVoxel({y,hasStairs,hasStairBelow,hasStairAbove}){ if(hasStairs && y===2) return true; if(hasStairBelow && y===0) return true; if(hasStairAbove && y===2) return true; return false; }
 function placeNonWall(ctx){
-  const {THREE, unit, getGeometry, group,geomKind,material,x,y,z, overrideWidth, overrideDepth}=ctx;
-  let geometry;
-  let mesh;
-  const w=overrideWidth||unit, h=unit*0.1, d=overrideDepth||unit;
-
-  if(geomKind==='floor'){
-    geometry=new THREE.BoxGeometry(w,h,d);
-    mesh=new THREE.Mesh(geometry,material);
-    mesh.position.set(x*unit,y*unit,z*unit);
+  const {THREE, unit, group, geomKind, material, x, y, z, overrideWidth, overrideDepth}=ctx;
+  
+  // Use canonical coordinate system from voxel-to-world.js
+  if(geomKind === 'floor'){
+    const mesh = buildFloor({ THREE, unit, x, y, z, material });
+    // Apply overrides if specified (for optimized empty room rendering)
+    if (overrideWidth || overrideDepth) {
+      const w = overrideWidth || unit;
+      const d = overrideDepth || unit;
+      const h = unit * 0.1;
+      mesh.geometry = new THREE.BoxGeometry(w, h, d);
+    }
+    group.add(mesh);
   }
-  else if(geomKind==='ceiling'){
-    geometry=new THREE.BoxGeometry(w,h,d);
-    mesh=new THREE.Mesh(geometry,material);
-    mesh.position.set(x*unit,y*unit+unit-h,z*unit);
+  else if(geomKind === 'ceiling'){
+    const mesh = buildCeiling({ THREE, unit, x, y, z, material });
+    // Apply overrides if specified (for optimized empty room rendering)
+    if (overrideWidth || overrideDepth) {
+      const w = overrideWidth || unit;
+      const d = overrideDepth || unit;
+      const h = unit * 0.1;
+      mesh.geometry = new THREE.BoxGeometry(w, h, d);
+    }
+    group.add(mesh);
   }
   else {
-    geometry=getGeometry(geomKind);
-    mesh=new (THREE.Mesh||function(){return {position:{set(){}}}})(geometry,material);
-    if(mesh.position){ const f=unit/3,t=f*0.1; 
-      // COORDINATE SYSTEM FIX: Map voxel coordinates to Three.js world coordinates
-      // x,y,z here are voxel indices: x=col (width), y=layer (height), z=row (depth)
-      let px=x*f+f/2,py=y*f+f/2,pz=z*f+f/2; if(geomKind==='floor'){ py=y*f+t/2; } else if(geomKind==='ceiling'){ py=y*f+f-t/2; } mesh.position.set(px,py,pz);} 
+    // Other geometry types (legacy support)
+    const {getGeometry} = ctx;
+    const geometry = getGeometry(geomKind);
+    const mesh = new (THREE.Mesh||function(){return {position:{set(){}}}})(geometry, material);
+    if(mesh.position) {
+      const pos = voxelToWorldCenter(x, y, z, unit);
+      mesh.position.set(pos.x, pos.y, pos.z);
+    }
+    group.add(mesh);
   }
-  group.add(mesh); 
 }
 function emitWalls(ctx){ 
-  const {THREE, unit, getGeometry, group,emitX,emitZ,material,z,x}=ctx;
-  const f=unit/3,t=f*0.1; if(emitX){ const g=getGeometry('wall_xMajor'); const m=new (THREE.Mesh||function(){return {position:{set(){}}}})(g,material); if(m.position){ const pz=z*f+f/2; m.position.set(unit/2,unit/2,pz);} group.add(m);} if(emitZ){ const g=getGeometry('wall_zMajor'); const m=new (THREE.Mesh||function(){return {position:{set(){}}}})(g,material); if(m.position){ const px=x*f+f/2; m.position.set(px,unit/2,unit/2);} group.add(m);} }
+  const {THREE, unit, emitX, emitZ, material, x, y, z, group}=ctx;
+  
+  // Use canonical coordinate system: render wall as single full standard cube
+  // The emitX/emitZ flags indicate wall orientation but we only need one cube per voxel
+  if(emitX || emitZ) {
+    const wallMesh = buildSolidCube({ THREE, unit, x, y, z, material });
+    group.add(wallMesh);
+  }
+}
 function processVoxels(ctx){
   const {vox,unit,hasStairs,hasStairBelow,hasStairAbove,materials,group, isEmptyRoom, THREE, getGeometry}=ctx;
 
   // OPTIMIZATION: For empty rooms, just add a single floor and ceiling plane and we're done.
   if (isEmptyRoom) {
-    // Create a single 3x1x3 floor plane
+    // Create a single 3x1x3 floor plane at center voxel (1, 0, 1)
     placeNonWall({
-      THREE, unit, getGeometry,
+      THREE, unit,
       geomKind: 'floor',
       material: materials.floor,
       x: 1, y: 0, z: 1, // Center of the 3x3 tile
@@ -209,9 +235,9 @@ function processVoxels(ctx){
       group
     });
 
-    // Create a single 3x1x3 ceiling plane
+    // Create a single 3x1x3 ceiling plane at center voxel (1, 2, 1)
     placeNonWall({
-      THREE, unit, getGeometry,
+      THREE, unit,
       geomKind: 'ceiling',
       material: materials.ceiling,
       x: 1, y: 2, z: 1, // Center of the 3x3 tile
@@ -225,19 +251,22 @@ function processVoxels(ctx){
   for (let z = 0; z < 3; z++) {
     for (let y = 0; y < 3; y++) {
       for (let x = 0; x < 3; x++) {
+        // Skip EMPTY voxels - they represent traversable air/space
         if (vox[z][y][x] === 0) continue;
+        
         if (skipVoxel({ y, hasStairs, hasStairBelow, hasStairAbove })) continue;
         
-        const isWall = y === 1;
-        if (isWall) {
-          const wallType = classifyMid(vox, x, y, z, hasStairs);
-          if (wallType && wallType.startsWith('wall')) {
-            emitWalls({ THREE, unit, getGeometry, emitX: wallType !== 'wall_zMajor', emitZ: wallType !== 'wall_xMajor', x, z, material: materials.wall, group });
-          }
+  const isWall = y === 1;
+  if (isWall) {
+          // Render ALL solid wall voxels as individual cubes (no collapsing/optimization)
+          // This ensures solid voxels = geometry, empty voxels = traversable space
+          dbg('TileMesh:solidWallVoxel', { x, y, z });
+          const wallMesh = buildSolidCube({ THREE, unit, x, y, z, material: materials.wall });
+          group.add(wallMesh);
         } else {
           const geomKind = (y === 0) ? 'floor' : 'ceiling';
           const material = (y === 0) ? materials.floor : materials.ceiling;
-          placeNonWall({ THREE, unit, getGeometry, geomKind, material, x, y, z, group });
+          placeNonWall({ THREE, unit, geomKind, material, x, y, z, group });
         }
       }
     }
@@ -264,7 +293,7 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasSt
   const group=new (THREE.Group||function(){this.children=[];this.add=o=>this.children.push(o);})(); 
   const getGeometry=makeGeometryFactory(THREE,unit); 
   const mat=makeMaterialFactory(THREE); 
-  const materials={ floor:mat('floor',0x333333,'floor'), mid:mat('mid',0x555555,'mid'), ceiling:mat('ceiling',0x888888,'ceiling'), stair:mat('stair',0x777777,'stair') };
+  const materials={ floor:mat('floor',0x333333,'floor'), mid:mat('mid',0x555555,'mid'), ceiling:mat('ceiling',0x888888,'ceiling'), stair:mat('stair',0x777777,'stair'), wall:mat('wall',0x606060,'wall') };
   const dirInfo=stairDir(proto, vox); 
   buildStairs({THREE,group,dirInfo,unit,stairMat:materials.stair}); 
   processVoxels({THREE,vox,unit,hasStairs:!!dirInfo,hasStairBelow,hasStairAbove,materials,group,getGeometry, isEmptyRoom}); 

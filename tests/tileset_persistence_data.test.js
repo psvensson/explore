@@ -137,7 +137,7 @@ describe('Tileset Persistence Data Layer', () => {
     
     // Setup
     const { DataMerger } = await import('../docs/dungeon/persistence/data_merger.js');
-    const { DEFAULT_TILESETS } = await import('../docs/dungeon/defaults/default_tilesets.js');
+  const { DEFAULT_TILESETS } = await import('../docs/dungeon/defaults/default_tile_structures.js');
     
     const dataMerger = new DataMerger();
     await dataMerger.initialize();

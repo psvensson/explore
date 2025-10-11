@@ -47,7 +47,7 @@ describe('Stair vertical-only constraint (Strategy A)', ()=>{
       }
       if (upperRole === 'upper') return (lowerRole === 'lower');
       
-      // Fallback to heuristic for legacy compatibility
+  // Heuristic fallback
       const isUp = classifyStair(up)==='upper';
       const isLow = classifyStair(low)==='lower';
       if (isLow) return isUp; 

@@ -112,14 +112,14 @@ describe('Visual Coordinate System Test', () => {
       console.log(`  Mesh ${i}: (${pos.x}, ${pos.y}, ${pos.z})`);
     });
     
-    // For a North-South corridor, we expect:
-    // - Floor meshes at Y≈0.05 (floor level)
-    // - Wall meshes at Y≈1.5 (middle level) 
-    // - Ceiling meshes at Y≈2.95 (ceiling level)
-    
-    const floorMeshes = positions.filter(pos => pos.y < 0.5);     // Floor level (Y≈0.05)
-    const wallMeshes = positions.filter(pos => pos.y > 1.0 && pos.y < 2.0); // Wall level (Y≈1.5)
-    const ceilingMeshes = positions.filter(pos => pos.y > 2.5);   // Ceiling level (Y≈2.95)
+  // For a North-South corridor with canonical coordinates (unit=3):
+  // - Floor meshes at Y≈0.15 (thin slab hugging the bottom of the tile)
+  // - Wall meshes at Y≈1.5 (contiguous with floor/ceiling layers)
+  // - Ceiling meshes at Y≈2.85 (thin cap touching the top of the tile)
+
+  const floorMeshes = positions.filter(pos => pos.y < 0.6);           // Floor level (Y≈0.15)
+  const wallMeshes = positions.filter(pos => pos.y > 1.0 && pos.y < 2.0); // Wall level (Y≈1.5)
+  const ceilingMeshes = positions.filter(pos => pos.y > 2.4);         // Ceiling level (Y≈2.85)
     
     console.log(`Floor meshes: ${floorMeshes.length}, Wall meshes: ${wallMeshes.length}, Ceiling meshes: ${ceilingMeshes.length}`);
     

@@ -1,15 +1,14 @@
 // tileset_data.js
 // Canonical ordered tile definitions for traversable dungeon generation
 // 
-// This file provides backward compatibility with the original tileset format
-// while also enabling the new modular tileset architecture.
+// Unified tileset data (ordered canonical tile definitions + modular resolver).
 // 
 // IMPORTANT: Keep ordering EXACT to preserve prototype indices relied on by tests.
 
 import { PackageResolver } from './package_resolver.js';
 
-// Legacy tile definitions (preserved for backward compatibility)
-const LEGACY_TILE_DEFS = [
+// Base tile definitions (canonical ordered list used for prototype indices)
+const BASE_TILE_DEFS = [
   // 0: Cross intersection (connects all 4 directions)
   // Middle layer pattern:
   // 1 0 1
@@ -293,34 +292,26 @@ class TilesetData {
     if (this.useModular) {
       return this.getModularTiles();
     } else {
-      return this.getLegacyTiles();
+  return this.getBaseTiles();
     }
   }
 
-  /**
-   * Get legacy tile format
-   */
-  getLegacyTiles() {
-    return [...LEGACY_TILE_DEFS];
-  }
+  // Return base (ordered) tile set
+  getBaseTiles() { return [...BASE_TILE_DEFS]; }
 
-  /**
-   * Get modular tiles resolved to legacy format
-   */
+  // Resolve modular tiles into base tile format (id/layers metadata)
   getModularTiles() {
     const resolved = this.resolver.resolve(this.currentPackage);
-    return this.convertToLegacyFormat(resolved);
+    return this.convertToBaseFormat(resolved);
   }
 
-  /**
-   * Convert modular tiles to legacy format for backward compatibility
-   */
-  convertToLegacyFormat(modularTiles) {
+  // Convert modular tiles into the base format structure consumed downstream
+  convertToBaseFormat(modularTiles) {
     return modularTiles.map((tile, index) => {
-      // Convert 3D structure to legacy layer format
+  // Convert 3D structure to base layer format
       const layers = this.structureToLayers(tile.structure);
       
-      // Map role to legacy format
+  // Map role into base format metadata
       const meta = {
         weight: tile.weight,
         role: tile.role
@@ -340,7 +331,7 @@ class TilesetData {
       }
 
       return {
-        tileId: 100 + index, // Start from 100 to match legacy format
+  tileId: 100 + index, // Stable id offset retained for tests
         layers: layers,
         transforms: this.getTransforms(tile.source ? tile.source.rotation : 0),
         meta: meta
@@ -349,7 +340,7 @@ class TilesetData {
   }
 
   /**
-   * Convert modular structure to legacy layers format
+  * Convert modular structure to base layers format
    */
   structureToLayers(structure) {
     if (structure.length === 1) {
@@ -401,7 +392,7 @@ class TilesetData {
   getAvailablePackages() {
     return this.resolver.resolve ? 
       ['standard_dungeon', 'high_connectivity', 'minimal_clumping', 'multi_level_dungeon', 'room_heavy'] :
-      ['legacy'];
+      ['base'];
   }
 
   /**
@@ -412,10 +403,7 @@ class TilesetData {
       const resolved = this.resolver.resolve(this.currentPackage);
       return this.resolver.getStats(resolved);
     } else {
-      return {
-        totalTiles: LEGACY_TILE_DEFS.length,
-        source: 'legacy'
-      };
+      return { totalTiles: BASE_TILE_DEFS.length, source: 'base' };
     }
   }
 
@@ -435,8 +423,8 @@ class TilesetData {
 // Create singleton instance
 const tilesetData = new TilesetData();
 
-// Legacy exports for backward compatibility
-const TILE_DEFS = tilesetData.getLegacyTiles();
+// Default export retains original shape for external consumers
+const TILE_DEFS = tilesetData.getBaseTiles();
 
 // Modern exports
 export { TilesetData, tilesetData };

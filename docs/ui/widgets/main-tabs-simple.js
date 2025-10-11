@@ -15,6 +15,8 @@ class MainTabsWidget extends Widget {
                 <div class="main-tab-nav">
                     <button class="main-tab-button {{#if is3DActive}}active{{/if}}" 
                             data-click="switch3D">3D View</button>
+                    <button class="main-tab-button {{#if isMapEditorActive}}active{{/if}}" 
+                            data-click="switchMapEditor">Map Editor</button>
                     <button class="main-tab-button {{#if isEditorActive}}active{{/if}}" 
                             data-click="switchEditor">Tileset Editor</button>
                 </div>
@@ -49,7 +51,8 @@ class MainTabsWidget extends Widget {
         });
         
         this.state = { 
-            is3DActive: true, 
+            is3DActive: true,
+            isMapEditorActive: false,
             isEditorActive: false 
         };
     }
@@ -63,15 +66,27 @@ class MainTabsWidget extends Widget {
 
     switch3D() {
         this.update({ 
-            is3DActive: true, 
+            is3DActive: true,
+            isMapEditorActive: false,
             isEditorActive: false 
         });
         this.updateMainContent();
     }
 
+    switchMapEditor() {
+        this.update({ 
+            is3DActive: false,
+            isMapEditorActive: true,
+            isEditorActive: false 
+        });
+        this.updateMainContent();
+        this.initializeMapEditor();
+    }
+
     switchEditor() {
         this.update({ 
-            is3DActive: false, 
+            is3DActive: false,
+            isMapEditorActive: false,
             isEditorActive: true 
         });
         this.updateMainContent();
@@ -83,12 +98,15 @@ class MainTabsWidget extends Widget {
 
         const sceneContainer = document.getElementById('scene-viewer-container');
         const generatorContainer = document.getElementById('generator-panel-container');
+        const mapEditorContainer = document.getElementById('map-editor-container');
         const editorContainer = document.getElementById('tileset-editor-container');
 
         console.log('[MainTabs] updateMainContent called', {
             is3DActive: this.state.is3DActive,
+            isMapEditorActive: this.state.isMapEditorActive,
             sceneContainer: !!sceneContainer,
             generatorContainer: !!generatorContainer,
+            mapEditorContainer: !!mapEditorContainer,
             editorContainer: !!editorContainer
         });
 
@@ -96,44 +114,48 @@ class MainTabsWidget extends Widget {
             // Show 3D view components
             if (sceneContainer) {
                 sceneContainer.style.display = 'block';
-                console.log('[MainTabs] Scene container shown', {
-                    display: sceneContainer.style.display,
-                    offsetWidth: sceneContainer.offsetWidth,
-                    offsetHeight: sceneContainer.offsetHeight,
-                    clientWidth: sceneContainer.clientWidth,
-                    clientHeight: sceneContainer.clientHeight,
-                    children: sceneContainer.children.length,
-                    hasCanvas: !!sceneContainer.querySelector('canvas')
-                });
+                console.log('[MainTabs] Scene container shown');
             }
             if (generatorContainer) {
                 generatorContainer.style.display = 'block';
-                console.log('[MainTabs] Generator container shown', {
-                    display: generatorContainer.style.display,
-                    offsetWidth: generatorContainer.offsetWidth,
-                    offsetHeight: generatorContainer.offsetHeight
-                });
+                console.log('[MainTabs] Generator container shown');
+            }
+            if (mapEditorContainer) {
+                mapEditorContainer.style.display = 'none';
+                console.log('[MainTabs] Map editor container hidden');
             }
             if (editorContainer) {
                 editorContainer.style.display = 'none';
                 console.log('[MainTabs] Editor container hidden');
             }
             
-            // Check if canvas exists and log its dimensions
+            // Deactivate map editor if active
+            if (window.mainMapEditor) {
+                window.mainMapEditor.deactivate();
+            }
+            
+            // Check if canvas exists
             const canvas = document.getElementById('threejs-canvas');
             if (canvas) {
-                console.log('[MainTabs] Canvas found after showing 3D view', {
-                    width: canvas.width,
-                    height: canvas.height,
-                    offsetWidth: canvas.offsetWidth,
-                    offsetHeight: canvas.offsetHeight,
-                    clientWidth: canvas.clientWidth,
-                    clientHeight: canvas.clientHeight,
-                    parentId: canvas.parentElement?.id,
-                    visible: canvas.offsetParent !== null
-                });
-            } else {
-                console.log('[MainTabs] No canvas found after showing 3D view');
+                console.log('[MainTabs] Canvas found after showing 3D view');
+            }
+        } else if (this.state.isMapEditorActive) {
+            // Show map editor
+            if (sceneContainer) {
+                sceneContainer.style.display = 'block';
+                console.log('[MainTabs] Scene container shown (for map editor)');
+            }
+            if (generatorContainer) {
+                generatorContainer.style.display = 'none';
+                console.log('[MainTabs] Generator container hidden');
+            }
+            if (mapEditorContainer) {
+                mapEditorContainer.style.display = 'block';
+                console.log('[MainTabs] Map editor container shown');
+            }
+            if (editorContainer) {
+                editorContainer.style.display = 'none';
+                console.log('[MainTabs] Tileset editor container hidden');
             }
         } else {
             // Show tileset editor
@@ -145,14 +167,74 @@ class MainTabsWidget extends Widget {
                 generatorContainer.style.display = 'none';
                 console.log('[MainTabs] Generator container hidden');
             }
+            if (mapEditorContainer) {
+                mapEditorContainer.style.display = 'none';
+                console.log('[MainTabs] Map editor container hidden');
+            }
             if (editorContainer) {
                 editorContainer.style.display = 'block';
-                console.log('[MainTabs] Editor container shown', {
-                    display: editorContainer.style.display,
-                    offsetWidth: editorContainer.offsetWidth,
-                    offsetHeight: editorContainer.offsetHeight,
-                    children: editorContainer.children.length
-                });
+                console.log('[MainTabs] Editor container shown');
+            }
+            
+            // Deactivate map editor if active
+            if (window.mainMapEditor) {
+                window.mainMapEditor.deactivate();
+            }
+        }
+    }
+
+    async initializeMapEditor() {
+        if (typeof window === 'undefined') return;
+
+        try {
+            console.log('[MainTabs] Starting map editor initialization...');
+            
+            // Lazy load map editor and Three.js
+            const { MapEditor } = await import('../map_editor.js');
+            console.log('[MainTabs] MapEditor class imported');
+            
+            const container = document.getElementById('map-editor-container');
+            const renderer = window.dungeonRenderer;
+            
+            console.log('[MainTabs] Map editor prerequisites:', {
+                container: !!container,
+                renderer: !!renderer,
+                rendererCanvas: !!renderer?.canvas,
+                rendererCamera: !!renderer?.camera,
+                rendererScene: !!renderer?.scene,
+                rendererTHREE: !!renderer?.THREE,
+                existingEditor: !!window.mainMapEditor
+            });
+            
+            if (!renderer) {
+                throw new Error('Dungeon renderer not initialized');
+            }
+            
+            // Get THREE from renderer
+            const THREE = renderer.THREE;
+            
+            if (container && !window.mainMapEditor) {
+                console.log('[MainTabs] Creating new MapEditor instance...');
+                window.mainMapEditor = new MapEditor(container, renderer, THREE);
+                await window.mainMapEditor.initialize();
+                console.log('[MainTabs] Map editor initialized');
+            } else if (window.mainMapEditor) {
+                console.log('[MainTabs] Reactivating existing MapEditor instance');
+                window.mainMapEditor.activate();
+            }
+        } catch (error) {
+            console.error('[MainTabs] Failed to initialize map editor:', error);
+            console.error('[MainTabs] Error stack:', error.stack);
+            
+            const container = document.getElementById('map-editor-container');
+            if (container) {
+                container.innerHTML = `
+                    <div class="editor-error">
+                        <h3>Map Editor Error</h3>
+                        <p>Failed to load map editor: ${error.message}</p>
+                        <p>Check browser console for details.</p>
+                    </div>
+                `;
             }
         }
     }
