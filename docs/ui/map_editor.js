@@ -98,11 +98,13 @@ export class MapEditor {
           </div>
         </div>
         
-        <div class="map-editor-viewport" style="flex: 0 0 50%; position: relative; background: #000;">
-          <div id="scene-viewer-container" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; min-height: 400px; z-index: 0;"></div>
-          <canvas id="grid-overlay-canvas" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10; pointer-events: all;"></canvas>
-          
-          <div class="map-editor-controls" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 6px; color: #fff; z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; max-width: 95%; overflow-y: auto;">
+        <div class="map-editor-viewport" style="flex: 0 0 50%; display: flex; flex-direction: column; background: #000; position: relative;">
+          <div class="map-editor-3dview" style="flex: 1; position: relative; overflow: hidden;">
+            <div id="scene-viewer-container" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; min-height: 400px; z-index: 0;"></div>
+            <canvas id="grid-overlay-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: all;"></canvas>
+          </div>
+
+          <div class="map-editor-controls" style="flex: 0 0 auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 6px; color: #fff; z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; max-width: 95%; overflow-y: auto; margin: 10px;">
             <div class="control-group" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
               <label style="font-weight: bold;">Layer</label>
               <div>
@@ -211,13 +213,41 @@ export class MapEditor {
       THREE: !!this.THREE
     });
     
+    // Move overlay canvas inside the scene-viewer-container to share stacking context with renderer
+    const sceneContainer = document.getElementById('scene-viewer-container');
+    if (sceneContainer && this.canvas && !sceneContainer.contains(this.canvas)) {
+      sceneContainer.appendChild(this.canvas);
+      console.log('[MapEditor] Moved overlay canvas inside scene-viewer-container');
+    }
+
+    // Apply proper z-index and pointer settings
+    this.canvas.style.zIndex = '10';
+    this.canvas.style.pointerEvents = 'all';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+
+    console.log('[MapEditor] Canvas parent after insertion:', this.canvas.parentElement?.id);
+
+    // Ensure renderer DOM element is available before creating overlay
+    const rendererDom = this.renderer?.domElement || this.renderer?.renderer?.domElement;
+    if (!rendererDom) {
+      console.warn('[MapEditor] ⚠️ Renderer DOM element not found — GridOverlay may misalign.');
+    } else {
+      console.log('[MapEditor] ✅ Renderer DOM element found:', rendererDom);
+    }
+
     this.overlay = new GridOverlay(
       this.canvas,
       this.renderer.camera,
-      this.THREE
+      this.THREE,
+      { domElement: rendererDom }
     );
+    console.log('[MapEditor] GridOverlay created with verified renderer reference for alignment');
     this.overlay.currentLayer = this.currentLayer;
-    this.overlay.gridSize = 9; // Match 3×3×3 tiles with unit=3
+    this.overlay.gridSize = 3; // Match renderer's tile unit=3 for exact alignment
     
     console.log('[MapEditor] GridOverlay created');
   }
@@ -231,7 +261,7 @@ export class MapEditor {
       if (this.currentLayer > 0) {
         this.currentLayer--;
         this.updateLayerDisplay();
-        this.overlay.currentLayer = this.currentLayer;
+        this.overlay.setLayer(this.currentLayer);
         this.overlay.render();
       }
     });
@@ -240,7 +270,7 @@ export class MapEditor {
       if (this.currentLayer < 2) {
         this.currentLayer++;
         this.updateLayerDisplay();
-        this.overlay.currentLayer = this.currentLayer;
+        this.overlay.setLayer(this.currentLayer);
         this.overlay.render();
       }
     });
@@ -449,6 +479,21 @@ export class MapEditor {
       console.log('[MapEditor] Overlay shown and rendered');
     }
 
+    // Diagnostic logging for layout alignment
+    const viewRect = this.container.querySelector('.map-editor-3dview')?.getBoundingClientRect();
+    const sceneRect = document.getElementById('scene-viewer-container')?.getBoundingClientRect();
+    const canvasRect = this.canvas?.getBoundingClientRect();
+    console.log('[MapEditor] Layout diagnostics:', {
+      viewRect,
+      sceneRect,
+      canvasRect
+    });
+
+    // Ensure pointer events only active when editor is active
+    if (this.canvas) {
+      this.canvas.style.pointerEvents = this.isActive ? 'all' : 'none';
+    }
+
     // Re-render all existing tiles
     this.syncRendererWithState();
     console.log('[MapEditor] State synced with renderer');
@@ -566,6 +611,16 @@ export class MapEditor {
    * Handle click to place/remove/select tile
    */
   handleMouseClick(event) {
+    // Prevent clicks on UI elements (palette, controls) from placing tiles
+    const clickedElement = document.elementFromPoint(event.clientX, event.clientY);
+    if (clickedElement && (
+      clickedElement.closest('.map-editor-palette') ||
+      clickedElement.closest('.map-editor-controls')
+    )) {
+      console.log('[MapEditor] Click ignored (UI element detected):', clickedElement.className);
+      return;
+    }
+
     if (!this.hoveredGrid) return;
     const { x, z } = this.hoveredGrid;
     const y = this.currentLayer;
@@ -761,12 +816,12 @@ export class MapEditor {
     if (event.key === '[' && this.currentLayer > 0) {
       this.currentLayer--;
       this.updateLayerDisplay();
-      this.overlay.currentLayer = this.currentLayer;
+      this.overlay.setLayer(this.currentLayer);
       this.overlay.render();
     } else if (event.key === ']' && this.currentLayer < 2) {
       this.currentLayer++;
       this.updateLayerDisplay();
-      this.overlay.currentLayer = this.currentLayer;
+      this.overlay.setLayer(this.currentLayer);
       this.overlay.render();
     }
     
@@ -893,52 +948,8 @@ export class MapEditor {
    * Resize canvas to match renderer viewport
    */
   resizeCanvas() {
-    const rendererCanvas = this.renderer.canvas;
-    console.log('[MapEditor] resizeCanvas called', {
-      rendererCanvas: !!rendererCanvas,
-      canvas: !!this.canvas,
-      overlay: !!this.overlay
-    });
-    
-    if (!rendererCanvas) {
-      console.error('[MapEditor] No renderer canvas found!');
-      return;
-    }
-    
-    const rect = rendererCanvas.getBoundingClientRect();
-    console.log('[MapEditor] Renderer canvas rect:', {
-      width: rect.width,
-      height: rect.height,
-      top: rect.top,
-      left: rect.left
-    });
-    
-    // Set canvas dimensions
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
-    
-    // Position canvas EXACTLY over the renderer canvas using fixed positioning
-    this.canvas.style.position = 'fixed';
-    this.canvas.style.top = `${rect.top}px`;
-    this.canvas.style.left = `${rect.left}px`;
-    this.canvas.style.pointerEvents = 'all';
-    this.canvas.style.zIndex = '1000';
-    
-    console.log('[MapEditor] Canvas resized and repositioned to:', {
-      width: this.canvas.width,
-      height: this.canvas.height,
-      styleWidth: this.canvas.style.width,
-      styleHeight: this.canvas.style.height,
-      top: this.canvas.style.top,
-      left: this.canvas.style.left,
-      position: this.canvas.style.position,
-      offsetParent: !!this.canvas.offsetParent,
-      display: window.getComputedStyle(this.canvas).display
-    });
-    
-    this.overlay.render();
+    // Deprecated: rely on CSS layout for automatic scaling
+    console.log('[MapEditor] resizeCanvas() skipped — using CSS-based layout scaling');
   }
   
   /**

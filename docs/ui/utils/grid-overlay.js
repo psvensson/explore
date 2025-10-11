@@ -4,24 +4,28 @@
  */
 
 export class GridOverlay {
-  constructor(canvas, camera, THREE) {
+  constructor(canvas, camera, THREE, renderer = null) {
     console.log('[GridOverlay] Constructor called with:', {
       canvas: !!canvas,
       camera: !!camera,
       THREE: !!THREE,
+      renderer: !!renderer,
       THREEtype: typeof THREE
     });
     
     this.canvas = canvas;
     this.camera = camera;
     this.THREE = THREE; // Store THREE reference (not scene)
+    this.renderer = renderer; // Store renderer reference for rect alignment
     this.currentLayer = 0;
     this.highlightedCell = null;
     this.ghostTile = null; // { structureId, rotation }
     this.visible = false;
+    // Debug marker for ray hit verification
+    this._debugMarkerScreen = null;
     
     // Grid settings
-    this.gridSize = 9; // 9 units per tile (3×3×3 with unit=3)
+    this.gridSize = 3; // match renderer tile unit (3 units per tile)
     this.gridExtent = 10; // Show ±10 tiles from origin
     
     // Raycasting plane
@@ -41,16 +45,20 @@ export class GridOverlay {
   updateRaycastPlane() {
     if (typeof window === 'undefined' || !this.THREE) return;
     
+    // Compute grid plane height for current layer and set a horizontal raycast plane at y = planeY
     const planeY = this.currentLayer * this.gridSize;
-    this.raycastPlane = new this.THREE.Plane(
-      new this.THREE.Vector3(0, 1, 0),
-      -planeY
-    );
+    const camDir = this.camera ? this.camera.getWorldDirection(new this.THREE.Vector3()) : new this.THREE.Vector3(0, -1, 0);
+    const camPos = this.camera ? this.camera.position.clone() : new this.THREE.Vector3(0, 50, 0);
 
-    console.log('[GridOverlay] Raycast plane updated:', {
+    // Horizontal plane: y = planeY -> normal (0,1,0), constant = -planeY (n·p + c = 0)
+    this.raycastPlane = new this.THREE.Plane(new this.THREE.Vector3(0, 1, 0), -planeY);
+
+    console.log('[GridOverlay] Raycast plane updated (horizontal):', {
+      cameraPosition: camPos,
+      cameraDirection: camDir,
       planeY,
-      normal: this.raycastPlane.normal,
-      constant: this.raycastPlane.constant
+      planeNormal: this.raycastPlane.normal,
+      planeConstant: this.raycastPlane.constant
     });
 
     if (this.camera) {
@@ -129,76 +137,99 @@ export class GridOverlay {
       });
     }
     
-    // Normalized device coordinates
-    const mouse = new this.THREE.Vector2(
-      (x / this.canvas.width) * 2 - 1,
-      -(y / this.canvas.height) * 2 + 1
-    );
-    
-    if (shouldLog) {
-      console.log('[GridOverlay] NDC mouse:', { x: mouse.x, y: mouse.y });
+    // Compute normalized device coordinates anchored to the renderer viewport (not the overlay)
+    const overlayRect = this.canvas.getBoundingClientRect();
+    // Convert overlay-relative coords to client coords
+    const clientX = overlayRect.left + x;
+    const clientY = overlayRect.top + y;
+    // Prefer renderer DOM rect if available
+    const rEl = (this.renderer && this.renderer.domElement) ? this.renderer.domElement : null;
+    const targetRect = (rEl && rEl.getBoundingClientRect) ? rEl.getBoundingClientRect() : overlayRect;
+    const ndcX = ((clientX - targetRect.left) / targetRect.width) * 2 - 1;
+    const ndcY = -((clientY - targetRect.top) / targetRect.height) * 2 + 1;
+    const mouse = new this.THREE.Vector2(ndcX, ndcY);
+
+    console.log('[GridOverlay] 🧭 Simplified NDC computation:', {
+      mouseX: x,
+      mouseY: y,
+      rectWidth: targetRect.width,
+      rectHeight: targetRect.height,
+      ndc: { x: ndcX.toFixed(3), y: ndcY.toFixed(3) }
+    });
+
+    // Ensure raycast plane exists; horizontal at current layer (y = planeY)
+    if (!this.raycastPlane) {
+      const planeY = this.currentLayer * this.gridSize;
+      this.raycastPlane = new this.THREE.Plane(new this.THREE.Vector3(0, 1, 0), -planeY);
     }
-    
-    // Raycast
+
+    // Coordinate alignment debug
+    console.log('[GridOverlay] 🧮 Coordinate alignment debug:', {
+      canvasRect: { left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height },
+      rendererRect: rEl ? { left: targetRect.left, top: targetRect.top, width: targetRect.width, height: targetRect.height } : null,
+      ndc: { x: ndcX.toFixed(3), y: ndcY.toFixed(3) }
+    });
+
+    // Focused debug logging for placement accuracy
+    console.log('[GridOverlay] 🧩 Mouse → NDC → Raycast:', {
+      mouseInput: { x, y, clientX: window.event?.clientX, clientY: window.event?.clientY },
+      rect: { width: targetRect.width, height: targetRect.height, left: targetRect.left, top: targetRect.top },
+      ndc: { x: mouse.x.toFixed(3), y: mouse.y.toFixed(3) },
+      cameraPos: this.camera?.position,
+      cameraDir: this.camera?.getWorldDirection(new this.THREE.Vector3())
+    });
+
     const raycaster = new this.THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
-    
-    if (shouldLog) {
-      console.log('[GridOverlay] Raycaster set:', {
-        origin: raycaster.ray.origin,
-        direction: raycaster.ray.direction
-      });
-    }
-    
-    // Intersect with horizontal plane at current layer
+
     const intersection = new this.THREE.Vector3();
     const hit = raycaster.ray.intersectPlane(this.raycastPlane, intersection);
+
     if (!hit) {
-      if (shouldLog) {
-        console.warn('[GridOverlay] No intersection with raycast plane', {
-          cameraPosition: this.camera.position,
-          cameraDirection: this.camera.getWorldDirection(new this.THREE.Vector3()),
-          planeConstant: this.raycastPlane.constant,
-          planeNormal: this.raycastPlane.normal,
-          rayOrigin: raycaster.ray.origin,
-          rayDirection: raycaster.ray.direction
-        });
-        this._screenToGridCallCount++;
-      }
+      console.warn('[GridOverlay] ❌ No intersection with raycast plane', {
+        rayOrigin: raycaster.ray.origin,
+        rayDirection: raycaster.ray.direction,
+        plane: { normal: this.raycastPlane.normal, constant: this.raycastPlane.constant }
+      });
       return null;
-    } else if (shouldLog) {
-      console.log('[GridOverlay] Intersection found:', {
-        x: intersection.x,
-        y: intersection.y,
-        z: intersection.z,
-        cameraPosition: this.camera.position,
-        planeConstant: this.raycastPlane.constant
-      });
     }
-    
-    if (shouldLog) {
-      console.log('[GridOverlay] Intersection found:', {
-        x: intersection.x,
-        y: intersection.y,
-        z: intersection.z
-      });
-    }
-    
-    // Snap to grid
+
+    // Log intersection and grid mapping
     const gridX = Math.floor(intersection.x / this.gridSize + 0.5);
     const gridZ = Math.floor(intersection.z / this.gridSize + 0.5);
+    const result = { x: gridX, y: this.currentLayer, z: gridZ };
     
-    const result = {
-      x: gridX,
-      y: this.currentLayer,
-      z: gridZ
-    };
-    
-    if (shouldLog) {
-      console.log('[GridOverlay] Grid position:', result);
-      this._screenToGridCallCount++;
+    // Debug: project intersection back to screen to verify alignment
+    const debugScreen = this.worldToScreen({ x: intersection.x, y: intersection.y, z: intersection.z });
+    this._debugMarkerScreen = debugScreen || null;
+
+    console.log('[GridOverlay] ✅ Intersection → Grid:', {
+      intersection: {
+        x: intersection.x.toFixed(2),
+        y: intersection.y.toFixed(2),
+        z: intersection.z.toFixed(2)
+      },
+      grid: result,
+      gridSize: this.gridSize
+    });
+
+    // Explicit numeric logging for debugging
+    console.log(`[GridOverlay] Intersection coords: x=${intersection.x.toFixed(2)}, y=${intersection.y.toFixed(2)}, z=${intersection.z.toFixed(2)}`);
+    console.log(`[GridOverlay] Grid coords: x=${gridX}, y=${this.currentLayer}, z=${gridZ}`);
+
+    // Detect if intersection is near origin (potential misalignment)
+    if (Math.abs(intersection.x) < 1 && Math.abs(intersection.z) < 1) {
+      console.warn('[GridOverlay] Intersection near origin — possible camera/plane misalignment');
     }
-    
+
+    // Track last intersection for delta comparison
+    if (!this._lastIntersection) this._lastIntersection = { x: intersection.x, z: intersection.z };
+    const dx = intersection.x - this._lastIntersection.x;
+    const dz = intersection.z - this._lastIntersection.z;
+    console.log(`[GridOverlay] Δ from last click: dx=${dx.toFixed(2)}, dz=${dz.toFixed(2)}`);
+    this._lastIntersection = { x: intersection.x, z: intersection.z };
+
+    this._screenToGridCallCount++;
     return result;
   }
 
@@ -241,9 +272,18 @@ export class GridOverlay {
     const vector = new this.THREE.Vector3(worldPos.x, worldPos.y, worldPos.z);
     vector.project(this.camera);
     if (vector.z > 1) return null;
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (vector.x + 1) * rect.width / 2;
-    const y = (-vector.y + 1) * rect.height / 2;
+
+    const overlayRect = this.canvas.getBoundingClientRect();
+    const rEl = (this.renderer && this.renderer.domElement) ? this.renderer.domElement : null;
+    const basisRect = (rEl && rEl.getBoundingClientRect) ? rEl.getBoundingClientRect() : overlayRect;
+
+    // Client-space coordinates based on the renderer viewport
+    const clientX = (vector.x + 1) * basisRect.width / 2 + basisRect.left;
+    const clientY = (-vector.y + 1) * basisRect.height / 2 + basisRect.top;
+
+    // Convert to overlay-canvas local coordinates for drawing
+    const x = clientX - overlayRect.left;
+    const y = clientY - overlayRect.top;
     return { x, y };
   }
 
@@ -280,10 +320,18 @@ export class GridOverlay {
           this.ctx.fillStyle = 'rgba(100, 200, 255, 0.3)';
           this.ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
           this.ctx.lineWidth = 2;
-          const halfSize = 20;
+          const halfSize = 12;
           this.ctx.fillRect(center.x - halfSize, center.y - halfSize, halfSize * 2, halfSize * 2);
           this.ctx.strokeRect(center.x - halfSize, center.y - halfSize, halfSize * 2, halfSize * 2);
         }
+      }
+      
+      // Draw debug marker for last ray-plane hit (small circle)
+      if (this._debugMarkerScreen) {
+        this.ctx.fillStyle = 'rgba(255, 80, 80, 0.9)';
+        this.ctx.beginPath();
+        this.ctx.arc(this._debugMarkerScreen.x, this._debugMarkerScreen.y, 4, 0, Math.PI * 2);
+        this.ctx.fill();
       }
     });
   }
@@ -389,24 +437,6 @@ export class GridOverlay {
     ctx.stroke();
   }
 
-  /**
-   * Project 3D world position to 2D screen position
-   */
-  worldToScreen(worldPos) {
-    if (typeof window === 'undefined' || !window.THREE) return null;
-    
-    const vector = worldPos.clone();
-    vector.project(this.camera);
-    
-    // Check if behind camera
-    if (vector.z > 1) return null;
-    
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (vector.x + 1) * rect.width / 2;
-    const y = (-vector.y + 1) * rect.height / 2;
-    
-    return { x, y };
-  }
 
   /**
    * Show overlay

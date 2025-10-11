@@ -131,6 +131,28 @@ function wireInput({controls, fps, renderer, keyState, orbitCamera}){
   const isTest=isTestEnv();
   function resize(){ const c=renderer.domElement.parentElement; const w=c.clientWidth||window.innerWidth; const h=c.clientHeight||window.innerHeight; orbitCamera.aspect=w/h; orbitCamera.updateProjectionMatrix(); fps.cam.aspect=w/h; fps.cam.updateProjectionMatrix(); renderer.setSize(w,h); }
   window.addEventListener('resize', resize);
+
+  // Ensure camera aspect ratio matches renderer viewport
+  const rect = renderer.domElement.getBoundingClientRect();
+  const aspect = rect.width / rect.height;
+  if (Math.abs(orbitCamera.aspect - aspect) > 0.01) {
+    console.warn('[Renderer] Camera aspect mismatch detected, correcting...', {
+      currentAspect: orbitCamera.aspect,
+      expectedAspect: aspect,
+      rect
+    });
+    orbitCamera.aspect = aspect;
+    orbitCamera.updateProjectionMatrix();
+    renderer.setSize(rect.width, rect.height, false);
+  }
+
+  console.log('[Renderer] Camera aspect check:', {
+    aspect: orbitCamera.aspect,
+    expected: aspect,
+    fov: orbitCamera.fov,
+    near: orbitCamera.near,
+    far: orbitCamera.far
+  });
   if (isTest) return;
   window.addEventListener('keydown', e=>{ 
     keyState[e.code]=true; 
@@ -197,11 +219,21 @@ function attachPublicAPIs(instance){
       
       // Add grid helper if not exists
       if (!instance.gridHelper) {
-        instance.gridHelper = new instance.THREE.GridHelper(90, 10, 0x444444, 0x222222);
+        instance.gridHelper = new instance.THREE.GridHelper(90, 30, 0x444444, 0x222222);
         instance.gridHelper.position.y = 0;
         instance.scene.add(instance.gridHelper);
       }
       instance.gridHelper.visible = true;
+
+      // Restore original angled camera placement for side perspective editing
+      instance.orbitCamera.position.set(0, 40, 110);
+      instance.orbitCamera.lookAt(0, 0, 0);
+      instance.controls.target.set(0, 0, 0);
+      instance.controls.update();
+      console.log('[Renderer] Editor mode camera restored to angled view:', {
+        position: instance.orbitCamera.position,
+        target: instance.controls.target
+      });
       
     } else {
       // Restore normal mode
@@ -224,12 +256,26 @@ function attachPublicAPIs(instance){
     // Apply rotation (Y-axis)
     mesh.rotation.y = instance.THREE.MathUtils.degToRad(tile.rotation);
     
-    // Position on grid (9-unit spacing for 3×3×3 tiles with unit=3)
-    mesh.position.set(
-      tile.position.x * 9,
-      tile.position.y * 9,
-      tile.position.z * 9
-    );
+    // Place using grid indices; bypass clamp in editor mode
+    if (instance.editorMode) {
+      mesh.position.set(tile.position.x * 3, tile.position.y * 3, tile.position.z * 3);
+    } else {
+      // Keep clamp in non-editor contexts
+      const clampedX = Math.max(-10, Math.min(10, tile.position.x));
+      const clampedY = Math.max(0, Math.min(5, tile.position.y));
+      const clampedZ = Math.max(-10, Math.min(10, tile.position.z));
+      mesh.position.set(clampedX * 3, clampedY * 3, clampedZ * 3);
+    }
+
+    // Diagnostic logging for position and camera distance
+    const camPos = instance.camera.position;
+    const distance = mesh.position.distanceTo(camPos);
+    console.log('[Renderer] Tile mesh positioned:', {
+      structureId: tile.structureId,
+      position: mesh.position,
+      cameraPosition: camPos,
+      distanceFromCamera: distance.toFixed(2)
+    });
     
     mesh.userData.tileId = tile.id;
 
@@ -251,7 +297,23 @@ function attachPublicAPIs(instance){
     });
 
     instance.editorTiles.add(mesh);
-    
+
+    // Ensure editorTiles group is visible and part of the scene
+    if (!instance.scene.children.includes(instance.editorTiles)) {
+      instance.scene.add(instance.editorTiles);
+      console.warn('[Renderer] editorTiles group was missing from scene — re-added.');
+    }
+    instance.editorTiles.visible = true;
+
+    // Force a render update to ensure visibility
+    if (instance.renderer && instance.camera) {
+      instance.renderer.render(instance.scene, instance.camera);
+      console.log('[Renderer] Editor tile rendered and scene updated:', {
+        editorTilesVisible: instance.editorTiles.visible,
+        totalEditorTiles: instance.editorTiles.children.length
+      });
+    }
+
     return mesh;
   };
   
