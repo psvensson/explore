@@ -7,6 +7,7 @@
 
 import { MapEditorState } from '../dungeon/map_editor_state.js';
 import { GridOverlay } from './utils/grid-overlay.js';
+import { highlightInGroup, clearInGroup } from '../renderer/selection_highlight.js';
 
 /**
  * MapEditor - Orchestrates user interaction for manual tile placement
@@ -247,7 +248,6 @@ export class MapEditor {
     );
     console.log('[MapEditor] GridOverlay created with verified renderer reference for alignment');
     this.overlay.currentLayer = this.currentLayer;
-    this.overlay.gridSize = 3; // Match renderer's tile unit=3 for exact alignment
     
     console.log('[MapEditor] GridOverlay created');
   }
@@ -299,17 +299,21 @@ export class MapEditor {
     this.canvas.addEventListener('mousemove', this.handleMouseMove);
     this.canvas.addEventListener('click', this.handleMouseClick);
 
-    // Zoom controls (mouse wheel)
+    // Zoom controls (mouse wheel) - delegate to renderer camera controller
     this.canvas.addEventListener('wheel', (event) => {
       event.preventDefault();
-      const delta = Math.sign(event.deltaY);
-      const zoomStep = 5;
-      const camera = this.renderer.camera;
-      if (camera) {
-        const direction = new this.THREE.Vector3();
-        camera.getWorldDirection(direction);
-        camera.position.addScaledVector(direction, delta * zoomStep);
-        console.log('[MapEditor] Zoom event:', { delta, newCameraPosition: camera.position });
+      if (this.renderer && typeof this.renderer.zoomByWheel === 'function') {
+        this.renderer.zoomByWheel(event, { step: 5 });
+      } else {
+        // Fallback: direct camera move along view direction
+        const delta = Math.sign(event.deltaY);
+        const zoomStep = 5;
+        const camera = this.renderer && this.renderer.camera;
+        if (camera) {
+          const direction = new this.THREE.Vector3();
+          camera.getWorldDirection(direction);
+          camera.position.addScaledVector(direction, delta * zoomStep);
+        }
       }
     });
 
@@ -581,30 +585,11 @@ export class MapEditor {
    * Clear any current highlight
    */
   clearHighlight() {
-    console.log('[MapEditor] clearHighlight() called. Current selectedTileId:', this.selectedTileId);
-    if (this.selectedTileId) {
-      const prevMeshes = this.renderer.getMeshesByTileId(this.selectedTileId);
-      console.log('[MapEditor] Found meshes to clear:', prevMeshes.length);
-      prevMeshes.forEach((m, i) => {
-        console.log(`[MapEditor] [${i}] Mesh info:`, {
-          name: m.name || '(unnamed)',
-          tileId: m.userData.tileId,
-          hasEmissive: !!m.material?.emissive,
-          originalEmissive: m.userData.originalEmissive,
-          currentEmissive: m.material?.emissive?.getHex?.()
-        });
-        if (m.material && m.material.emissive && m.userData.originalEmissive !== undefined) {
-          m.material.emissive.setHex(m.userData.originalEmissive);
-          m.material.needsUpdate = true;
-        }
-      });
-      console.log('[MapEditor] Finished clearing emissive for all meshes of tileId:', this.selectedTileId);
-      this.selectedTileId = null;
-      this.selectedTile = null;
-      console.log('[MapEditor] Highlight cleared successfully.');
-    } else {
-      console.log('[MapEditor] No selectedTileId to clear.');
+    if (this.selectedTileId && this.renderer && this.renderer.editorTiles) {
+      clearInGroup(this.renderer.editorTiles, this.selectedTileId);
     }
+    this.selectedTileId = null;
+    this.selectedTile = null;
   }
 
   /**
@@ -740,60 +725,12 @@ export class MapEditor {
    */
   highlightTile(tile) {
     if (!tile) return;
-
-    console.log('[MapEditor] highlightTile() called for tile:', tile.id, {
-      structureId: tile.structureId,
-      rotation: tile.rotation,
-      position: tile.position
-    });
-
-    // Always clear any previous highlight before applying a new one
-    console.log('[MapEditor] --- Highlight Debug Start ---');
-    console.log('[MapEditor] Before clearHighlight(), selectedTileId:', this.selectedTileId);
     this.clearHighlight();
-    console.log('[MapEditor] After clearHighlight(), selectedTileId:', this.selectedTileId);
-
-    // Find all meshes with matching tileId
-    const meshes = this.renderer.getMeshesByTileId(tile.id) || [];
-    console.log('[MapEditor] Meshes found for highlight:', meshes.length);
-    console.log('[MapEditor] EditorTiles children count:', this.renderer.editorTiles.children.length);
-    this.renderer.editorTiles.children.forEach((child, i) => {
-      console.log(`[MapEditor] EditorTiles[${i}]`, {
-        name: child.name || '(unnamed)',
-        tileId: child.userData.tileId,
-        position: child.position,
-        visible: child.visible
-      });
-    });
-    meshes.forEach((m, i) => {
-      console.log(`[MapEditor] [${i}] Mesh info:`, {
-        name: m.name || '(unnamed)',
-        tileId: m.userData.tileId,
-        hasEmissive: !!m.material?.emissive,
-        currentEmissive: m.material?.emissive?.getHex?.()
-      });
-    });
-
-    if (meshes.length === 0) {
-      console.warn('[MapEditor] No meshes found for tileId:', tile.id);
-      return;
+    if (this.renderer && this.renderer.editorTiles) {
+      highlightInGroup(this.renderer.editorTiles, tile.id, { color: 0x00ff00 });
+      this.selectedTileId = tile.id;
+      this.selectedTile = tile;
     }
-
-    // Highlight only the meshes for this tile
-    meshes.forEach((m, i) => {
-      if (m.material && m.material.emissive) {
-        m.userData.originalEmissive = m.material.emissive.getHex();
-        m.material.emissive.setHex(0x00ff00);
-        m.material.needsUpdate = true;
-        console.log(`[MapEditor] [${i}] Mesh emissive set to highlight color (0x00ff00)`);
-      }
-    });
-
-    // Update selected tile reference
-    this.selectedTileId = tile.id;
-    this.selectedTile = tile;
-
-    console.log('[MapEditor] Tile highlighted visually:', tile.id, 'Total highlighted meshes:', meshes.length);
   }
 
   /**

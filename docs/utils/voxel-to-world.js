@@ -15,7 +15,39 @@
 const FLOOR_THICKNESS_RATIO = 0.1;
 const CEILING_THICKNESS_RATIO = 0.1;
 
+// Layout mode: 'canonical' (default) or 'equalThirds'.
+// - canonical: thin floor/ceiling based on FLOOR_THICKNESS_RATIO / CEILING_THICKNESS_RATIO
+// - equalThirds: three equal-height layers within a single tile height (uniform boxes per layer)
+let __LAYER_LAYOUT_MODE__ = 'canonical';
+
+export function setLayerLayoutMode(mode) {
+  const allowed = ['canonical', 'equalThirds'];
+  if (!allowed.includes(mode)) {
+    console.warn(`[voxel-to-world] Unsupported layer layout mode '${mode}', keeping '${__LAYER_LAYOUT_MODE__}'`);
+    return;
+  }
+  __LAYER_LAYOUT_MODE__ = mode;
+  // Mirror to window for convenient inspection in browser devtools
+  if (typeof window !== 'undefined') {
+    window.__LAYER_LAYOUT_MODE__ = mode;
+  }
+}
+
+export function getLayerLayoutMode() {
+  return __LAYER_LAYOUT_MODE__;
+}
+
 function computeLayerLayout(unit) {
+  // Mode: equalThirds -> three equal-height layers that sum to one tile height (unit)
+  // This makes floor/middle/ceiling uniform box heights within a tile.
+  if (__LAYER_LAYOUT_MODE__ === 'equalThirds') {
+    const one = unit / 3;
+    const bases = [0, one, 2 * one];
+    const thicknesses = [one, one, one];
+    return { bases, thicknesses };
+  }
+
+  // Default canonical mode (thin floor/ceiling)
   const minThickness = Math.max(unit * 0.02, 1e-6);
   let floorThickness = Math.max(unit * FLOOR_THICKNESS_RATIO, minThickness);
   let ceilingThickness = Math.max(unit * CEILING_THICKNESS_RATIO, minThickness);
@@ -31,17 +63,8 @@ function computeLayerLayout(unit) {
     ceilingThickness = Math.max(ceilingThickness - reduction, minThickness);
   }
 
-  const bases = [
-    0,
-    floorThickness,
-    floorThickness + middleThickness
-  ];
-
-  const thicknesses = [
-    floorThickness,
-    middleThickness,
-    ceilingThickness
-  ];
+  const bases = [0, floorThickness, floorThickness + middleThickness];
+  const thicknesses = [floorThickness, middleThickness, ceilingThickness];
 
   return { bases, thicknesses };
 }

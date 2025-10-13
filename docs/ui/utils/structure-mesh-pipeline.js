@@ -1,8 +1,9 @@
-// structure-mesh-pipeline.js
+ // structure-mesh-pipeline.js
 // Centralized pipeline for converting structure data to THREE.js meshes
 
 import { normalizeToCanonical } from '../../utils/voxel_normalize.js';
 import { dbg } from '../../utils/debug_log.js';
+import { TILE_SIZE } from '../../renderer/constants.js';
 
 /**
  * Centralized pipeline for structure-to-mesh conversion
@@ -80,6 +81,23 @@ export class StructureMeshPipeline {
     return clone;
   }
   
+  static _traverse(node, fn) {
+    if (!node) return;
+    if (typeof node.traverse === 'function') {
+      node.traverse(fn);
+      return;
+    }
+    // Fallback for environments (e.g., Jest stubs) where traverse() is missing
+    const stack = [node];
+    while (stack.length) {
+      const n = stack.pop();
+      try { fn(n); } catch (_) {}
+      if (n && Array.isArray(n.children)) {
+        for (const c of n.children) stack.push(c);
+      }
+    }
+  }
+
   /**
    * Create a mesh from structure data
    * @param {THREE} THREERef - THREE.js reference
@@ -93,7 +111,7 @@ export class StructureMeshPipeline {
   static async createMeshFromStructure(THREERef, structureData, options = {}) {
     const {
       materialFactory = null,
-      unit = 3,
+      unit = TILE_SIZE,
       prototypeId = 'editor_preview',
       disableCache = false,
       structureId = null
@@ -136,7 +154,7 @@ export class StructureMeshPipeline {
     });
 
     // Ensure all materials and meshes carry the structureId for downstream tileId propagation
-    mesh.traverse((child) => {
+    this._traverse(mesh, (child) => {
       if (child.isMesh) {
         // Assign to userData
         child.userData = child.userData || {};
@@ -237,7 +255,7 @@ export class StructureMeshPipeline {
   static async updateViewerWithStructure(viewer, structureData, materialFactory, options = {}) {
     const THREERef = viewer.getTHREE();
     const mesh = await this.createMeshFromStructure(THREERef, structureData, {
-      unit: 3,
+      unit: TILE_SIZE,
       disableCache: true,
       ...options,
       materialFactory

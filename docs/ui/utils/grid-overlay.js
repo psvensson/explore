@@ -3,6 +3,9 @@
  * Canvas-based grid visualization and raycasting for map editor
  */
 
+import { TILE_SIZE } from '../../renderer/constants.js';
+import { ScreenSpaceMapper } from '../../renderer/screen_space_mapper.js';
+
 export class GridOverlay {
   constructor(canvas, camera, THREE, renderer = null) {
     console.log('[GridOverlay] Constructor called with:', {
@@ -25,7 +28,7 @@ export class GridOverlay {
     this._debugMarkerScreen = null;
     
     // Grid settings
-    this.gridSize = 3; // match renderer tile unit (3 units per tile)
+    this.gridSize = TILE_SIZE; // match renderer tile unit (use shared constant)
     this.gridExtent = 10; // Show ±10 tiles from origin
     
     // Raycasting plane
@@ -37,6 +40,8 @@ export class GridOverlay {
     
     // Canvas context
     this.ctx = canvas.getContext('2d');
+    // Shared coordinate mapper for ray/ndc/world conversions
+    this.mapper = new ScreenSpaceMapper(this.THREE);
   }
 
   /**
@@ -138,23 +143,13 @@ export class GridOverlay {
     }
     
     // Compute normalized device coordinates anchored to the renderer viewport (not the overlay)
-    const overlayRect = this.canvas.getBoundingClientRect();
-    // Convert overlay-relative coords to client coords
-    const clientX = overlayRect.left + x;
-    const clientY = overlayRect.top + y;
-    // Prefer renderer DOM rect if available
     const rEl = (this.renderer && this.renderer.domElement) ? this.renderer.domElement : null;
-    const targetRect = (rEl && rEl.getBoundingClientRect) ? rEl.getBoundingClientRect() : overlayRect;
-    const ndcX = ((clientX - targetRect.left) / targetRect.width) * 2 - 1;
-    const ndcY = -((clientY - targetRect.top) / targetRect.height) * 2 + 1;
-    const mouse = new this.THREE.Vector2(ndcX, ndcY);
+    const ndc = this.mapper.overlayToNDC(this.canvas, rEl, x, y);
 
     console.log('[GridOverlay] 🧭 Simplified NDC computation:', {
       mouseX: x,
       mouseY: y,
-      rectWidth: targetRect.width,
-      rectHeight: targetRect.height,
-      ndc: { x: ndcX.toFixed(3), y: ndcY.toFixed(3) }
+      ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) }
     });
 
     // Ensure raycast plane exists; horizontal at current layer (y = planeY)
@@ -164,33 +159,33 @@ export class GridOverlay {
     }
 
     // Coordinate alignment debug
-    console.log('[GridOverlay] 🧮 Coordinate alignment debug:', {
-      canvasRect: { left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height },
-      rendererRect: rEl ? { left: targetRect.left, top: targetRect.top, width: targetRect.width, height: targetRect.height } : null,
-      ndc: { x: ndcX.toFixed(3), y: ndcY.toFixed(3) }
-    });
+    try {
+      const overlayRect = this.canvas.getBoundingClientRect();
+      const basisRect = rEl && rEl.getBoundingClientRect ? rEl.getBoundingClientRect() : overlayRect;
+      console.log('[GridOverlay] 🧮 Coordinate alignment debug:', {
+        canvasRect: { left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height },
+        rendererRect: rEl ? { left: basisRect.left, top: basisRect.top, width: basisRect.width, height: basisRect.height } : null,
+        ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) }
+      });
+    } catch (_) {}
 
     // Focused debug logging for placement accuracy
-    console.log('[GridOverlay] 🧩 Mouse → NDC → Raycast:', {
-      mouseInput: { x, y, clientX: window.event?.clientX, clientY: window.event?.clientY },
-      rect: { width: targetRect.width, height: targetRect.height, left: targetRect.left, top: targetRect.top },
-      ndc: { x: mouse.x.toFixed(3), y: mouse.y.toFixed(3) },
-      cameraPos: this.camera?.position,
-      cameraDir: this.camera?.getWorldDirection(new this.THREE.Vector3())
-    });
-
-    const raycaster = new this.THREE.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
-
-    const intersection = new this.THREE.Vector3();
-    const hit = raycaster.ray.intersectPlane(this.raycastPlane, intersection);
-
-    if (!hit) {
-      console.warn('[GridOverlay] ❌ No intersection with raycast plane', {
-        rayOrigin: raycaster.ray.origin,
-        rayDirection: raycaster.ray.direction,
-        plane: { normal: this.raycastPlane.normal, constant: this.raycastPlane.constant }
+    try {
+      const overlayRect = this.canvas.getBoundingClientRect();
+      const basisRect = rEl && rEl.getBoundingClientRect ? rEl.getBoundingClientRect() : overlayRect;
+      console.log('[GridOverlay] 🧩 Mouse → NDC → Raycast:', {
+        mouseInput: { x, y, clientX: window.event?.clientX, clientY: window.event?.clientY },
+        rect: { width: basisRect.width, height: basisRect.height, left: basisRect.left, top: basisRect.top },
+        ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) },
+        cameraPos: this.camera?.position,
+        cameraDir: this.camera?.getWorldDirection(new this.THREE.Vector3())
       });
+    } catch (_) {}
+
+    const intersection = this.mapper.intersectPlaneY(this.camera, this.canvas, rEl, x, y, this.currentLayer * this.gridSize);
+
+    if (!intersection) {
+      console.warn('[GridOverlay] ❌ No intersection with raycast plane (mapper)');
       return null;
     }
 
@@ -273,18 +268,8 @@ export class GridOverlay {
     vector.project(this.camera);
     if (vector.z > 1) return null;
 
-    const overlayRect = this.canvas.getBoundingClientRect();
     const rEl = (this.renderer && this.renderer.domElement) ? this.renderer.domElement : null;
-    const basisRect = (rEl && rEl.getBoundingClientRect) ? rEl.getBoundingClientRect() : overlayRect;
-
-    // Client-space coordinates based on the renderer viewport
-    const clientX = (vector.x + 1) * basisRect.width / 2 + basisRect.left;
-    const clientY = (-vector.y + 1) * basisRect.height / 2 + basisRect.top;
-
-    // Convert to overlay-canvas local coordinates for drawing
-    const x = clientX - overlayRect.left;
-    const y = clientY - overlayRect.top;
-    return { x, y };
+    return this.mapper.worldToOverlayXY(this.camera, this.canvas, rEl, worldPos);
   }
 
     /**

@@ -9,8 +9,11 @@ import { makeOrbitControls, initOrbitDefaults, makeKeyState, makeFPSState, updat
 import { rebuildTileIdOverlays } from './overlays.js';
 import { updateDungeonMesh, setInstanceRef } from './update_mesh.js';
 import { setupMiniViewer } from './mini_viewer.js';
+import { applyTileIdentity } from './tile_identity.js';
 import { setupStairDemo } from './stair_demo.js';
 import { generateWFCDungeon } from './wfc_generate.js';
+import { TILE_SIZE } from './constants.js';
+import { TileAdapter } from './tile_adapter.js';
 
 export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   console.log('[Render] createRenderer called', { containerId, hasThree: !!THREE, hasOrbitControls: !!THREE?.OrbitControls });
@@ -205,6 +208,25 @@ function attachPublicAPIs(instance){
   instance.setZoomDistance = (dist)=>{ const tgt=controls.target.clone(); const dir=orbitCamera.position.clone().sub(tgt).normalize(); const clamp=Math.min(Math.max(dist, controls.minDistance||5), controls.maxDistance||300); orbitCamera.position.copy(dir.multiplyScalar(clamp).add(tgt)); controls.update(); };
   instance.pan = (dx,dy)=>{ const dist=orbitCamera.position.distanceTo(controls.target); const s=dist*0.0015; const x=-dx*s, y=dy*s; const te=orbitCamera.matrix.elements; const right=new instance.THREE.Vector3(te[0],te[1],te[2]).multiplyScalar(x); const up=new instance.THREE.Vector3(te[4],te[5],te[6]).multiplyScalar(y); controls.target.add(right).add(up); orbitCamera.position.add(right).add(up); controls.update(); };
   instance.rebuildTileIdOverlays = ()=> rebuildTileIdOverlays(instance);
+
+  // Camera controller helpers
+  instance.zoomByWheel = (event, { step = 5 } = {}) => {
+    try {
+      const delta = Math.sign(event?.deltaY ?? 0);
+      const target = controls.target || new instance.THREE.Vector3(0, 0, 0);
+      const currentDist = orbitCamera.position.distanceTo(target);
+      const minD = controls.minDistance ?? 5;
+      const maxD = controls.maxDistance ?? 300;
+      const desired = Math.min(Math.max(currentDist + delta * step, minD), maxD);
+      instance.setZoomDistance(desired);
+    } catch (e) {
+      // Fallback: move along view direction if anything fails
+      const dir = new instance.THREE.Vector3();
+      orbitCamera.getWorldDirection(dir);
+      orbitCamera.position.addScaledVector(dir, Math.sign(event?.deltaY ?? 0) * (step || 5));
+      controls.update && controls.update();
+    }
+  };
   
   // Editor mode APIs
   instance.setEditorMode = (enabled) => {
@@ -258,13 +280,21 @@ function attachPublicAPIs(instance){
     
     // Place using grid indices; bypass clamp in editor mode
     if (instance.editorMode) {
-      mesh.position.set(tile.position.x * 3, tile.position.y * 3, tile.position.z * 3);
+      mesh.position.set(
+        tile.position.x * TILE_SIZE,
+        tile.position.y * TILE_SIZE,
+        tile.position.z * TILE_SIZE
+      );
     } else {
       // Keep clamp in non-editor contexts
       const clampedX = Math.max(-10, Math.min(10, tile.position.x));
       const clampedY = Math.max(0, Math.min(5, tile.position.y));
       const clampedZ = Math.max(-10, Math.min(10, tile.position.z));
-      mesh.position.set(clampedX * 3, clampedY * 3, clampedZ * 3);
+      mesh.position.set(
+        clampedX * TILE_SIZE,
+        clampedY * TILE_SIZE,
+        clampedZ * TILE_SIZE
+      );
     }
 
     // Diagnostic logging for position and camera distance
@@ -277,24 +307,7 @@ function attachPublicAPIs(instance){
       distanceFromCamera: distance.toFixed(2)
     });
     
-    mesh.userData.tileId = tile.id;
-
-    // Propagate tileId to all child meshes for selection/highlight
-    mesh.traverse((child) => {
-      if (child.isMesh) {
-        child.userData.tileId = tile.id;
-        // Clone material to ensure unique emissive state per tile
-        if (child.material) {
-          const oldUUID = child.material.uuid;
-          child.material = child.material.clone();
-          console.log('[Renderer] Cloned material for mesh:', child.name || '(unnamed)', {
-            tileId: tile.id,
-            oldUUID,
-            newUUID: child.material.uuid
-          });
-        }
-      }
-    });
+    applyTileIdentity(mesh, { tileId: tile.id, cloneMaterials: true });
 
     instance.editorTiles.add(mesh);
 
@@ -398,7 +411,14 @@ function exposeGeneration(instance){
     centerSeed
   });
   console.log(`[WFC] Generation complete, tiles:`, tiles.length, 'tiles with prototypeIndex:', tiles.map(t => t.prototypeIndex));
-  buildAscii(grid3D); buildBrowser(tiles, protos, meshUtil); instance.lastTiles = tiles.map(t=>({...t,tileId:protos[t.prototypeIndex].tileId}));
+  buildAscii(grid3D); buildBrowser(tiles, protos, meshUtil);
+  instance.lastTiles = tiles.map(t=>({...t,tileId:protos[t.prototypeIndex].tileId}));
+  // Provide normalized RendererTile DTOs for overlays/selection/persistence
+  try {
+    instance.lastRendererTiles = TileAdapter.wfcTilesToRendererTiles(tiles, protos);
+  } catch (_) {
+    instance.lastRendererTiles = null;
+  }
       const THREERef = instance.THREE || window.THREE; setupMiniViewer(tiles, meshUtil, THREERef); const group = buildMeshGroup(tiles, protos, meshUtil, THREERef);
       if (window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] tiles->group', { tiles: tiles.length, groupChildren: group.children? group.children.length: 'n/a' });
       updateDungeonMesh(group);
@@ -410,7 +430,29 @@ function exposeGeneration(instance){
 
 function buildAscii(grid){ import('./ascii.js').then(m=>{ const pre=document.getElementById('ascii-map'); if(pre) pre.textContent=m.gridToAscii(grid); }).catch(()=>{}); }
 function buildBrowser(tiles, protos, meshUtil){ import('./ascii.js').then(m=>{ const el=document.getElementById('tile-block-browser'); if(!el){ if(window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] tile-block-browser element missing'); return; } el.innerHTML=''; tiles.forEach(t=>{ const vox=meshUtil.rotateY(protos[t.prototypeIndex].voxels, t.rotationY); const div=document.createElement('div'); div.className='tile-block'; div.dataset.selected='false'; div.dataset.prototype=t.prototypeIndex; div.dataset.rotation=t.rotationY; div.dataset.tx=t.position[2]; div.dataset.ty=t.position[1]; div.dataset.tz=t.position[0]; const pre=document.createElement('pre'); pre.textContent=m.voxBlockToAscii(vox).trim(); const coord=document.createElement('div'); coord.className='coord'; coord.textContent=`${t.position[2]},${t.position[1]},${t.position[0]}`; div.appendChild(coord); div.appendChild(pre); el.appendChild(div); }); if(window.__RENDER_DEBUG__||window.__WFC_DEBUG__) console.debug('[Render] browser tiles drawn', { tiles: tiles.length, elChildren: el.children.length }); }).catch(()=>{}); }
-function buildMeshGroup(tiles, protos, meshUtil, THREE){ const g=new THREE.Group(); const map=new Map(); tiles.forEach(t=> map.set(`${t.position[0]},${t.position[1]},${t.position[2]}`, t)); const isStair=t=>{ const p=protos[t.prototypeIndex]; return p.meta&&p.meta.role==='stair'; }; const getN=(t,dz,dy,dx)=> map.get(`${t.position[0]+dz},${t.position[1]+dy},${t.position[2]+dx}`); tiles.forEach(t=>{ const below=getN(t,0,-1,0), above=getN(t,0,1,0); const gm=meshUtil.buildTileMesh({THREE, prototypeIndex:t.prototypeIndex, rotationY:t.rotationY, unit:3, hasStairBelow:!!(below&&isStair(below)), hasStairAbove:!!(above&&isStair(above)), prototypes:protos}); gm.position.set(t.position[2]*3, t.position[1]*3, t.position[0]*3); g.add(gm); }); return g; }
+function buildMeshGroup(tiles, protos, meshUtil, THREE){
+  const g=new THREE.Group();
+  const map=new Map();
+  tiles.forEach(t=> map.set(`${t.position[0]},${t.position[1]},${t.position[2]}`, t));
+  const isStair=t=>{ const p=protos[t.prototypeIndex]; return p.meta&&p.meta.role==='stair'; };
+  const getN=(t,dz,dy,dx)=> map.get(`${t.position[0]+dz},${t.position[1]+dy},${t.position[2]+dx}`);
+  tiles.forEach(t=>{
+    const below=getN(t,0,-1,0), above=getN(t,0,1,0);
+    const gm=meshUtil.buildTileMesh({
+      THREE,
+      prototypeIndex:t.prototypeIndex,
+      rotationY:t.rotationY,
+      unit:TILE_SIZE,
+      hasStairBelow:!!(below&&isStair(below)),
+      hasStairAbove:!!(above&&isStair(above)),
+      prototypes:protos
+    });
+    // Note: axis mapping preserved from original implementation
+    gm.position.set(t.position[2]*TILE_SIZE, t.position[1]*TILE_SIZE, t.position[0]*TILE_SIZE);
+    g.add(gm);
+  });
+  return g;
+}
 
 // Browser auto-bootstrap (skip during Jest tests)
 if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
@@ -418,14 +460,41 @@ if (typeof window !== 'undefined' && !(typeof process !== 'undefined' && process
   if (!window.__DUNGEON_RENDERER_BOOTSTRAPPED) {
     console.log('[Render] Starting bootstrap - loading Three.js modules');
     window.__DUNGEON_RENDERER_BOOTSTRAPPED = true;
+    
+    // Create a promise that resolves when mesh generators are ready
+    window.__meshGeneratorsReady = new Promise((resolve, reject) => {
+      window.__meshGeneratorsReadyResolve = resolve;
+      window.__meshGeneratorsReadyReject = reject;
+    });
+    
     Promise.all([
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js'),
       import('https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/controls/OrbitControls.js')
-    ]).then(([threeModule, controlsModule]) => {
+    ]).then(async ([threeModule, controlsModule]) => {
       if (!controlsModule.OrbitControls) throw new Error('Failed to load OrbitControls');
       // Create an extensible copy of the module namespace so we can attach OrbitControls
       const THREE = { ...threeModule, OrbitControls: controlsModule.OrbitControls };
-      console.log('[Render] Three.js loaded successfully, creating main renderer');
+      console.log('[Render] Three.js loaded successfully, initializing mesh generators');
+      
+      // Initialize pluggable mesh generator system
+      try {
+        const { initializeMeshGenerators } = await import('./mesh-generators/index.js');
+        initializeMeshGenerators(THREE);
+        console.log('[Render] Mesh generators initialized');
+        
+        // Resolve the global promise so UI can proceed
+        if (window.__meshGeneratorsReadyResolve) {
+          window.__meshGeneratorsReadyResolve();
+        }
+      } catch (err) {
+        console.warn('[Render] Failed to initialize mesh generators (falling back to legacy renderer):', err);
+        // Reject the promise on error
+        if (window.__meshGeneratorsReadyReject) {
+          window.__meshGeneratorsReadyReject(err);
+        }
+      }
+      
+      console.log('[Render] Creating main renderer');
       const rendererInstance = createRenderer({ THREE });
       console.log('[Render] Main renderer instance created and returned', { instance: !!rendererInstance });
     }).catch(err => {

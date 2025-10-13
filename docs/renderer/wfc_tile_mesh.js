@@ -12,6 +12,8 @@ import {
   voxelToWorldCenter, 
   getStandardCubeDimensions 
 } from '../utils/voxel-to-world.js';
+// Pluggable mesh generator system
+import { getActiveMeshGenerator } from './mesh-generators/index.js';
 
 // --- Rotation Helpers (Y axis only, matching tileset usage) ---
 export function rotateYOnce(vox){
@@ -272,7 +274,7 @@ function processVoxels(ctx){
     }
   }
 }
-export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasStairBelow=false, hasStairAbove=false, prototypes=null}={}){
+export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasStairBelow=false, hasStairAbove=false, prototypes=null, useLegacyRenderer=false}={}){
   if(!THREE) throw new Error('THREE dependency missing'); 
   
   // Use passed prototypes or fall back to global tilePrototypes for backward compatibility
@@ -289,6 +291,29 @@ export function buildTileMesh({THREE, prototypeIndex, rotationY=0, unit=1, hasSt
   // It should have a floor and ceiling. We identify it by its prototype metadata.
   const isEmptyRoom = proto.meta && proto.meta.role === 'room' && proto.voxels.flat(2).every(v => v === 0);
 
+  // NEW: Try using pluggable mesh generator if available (unless legacy mode forced)
+  // Guard: only use in browser and not under Jest; guard process access in browsers
+  if (!useLegacyRenderer && typeof window !== 'undefined' && !(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
+    try {
+      const generator = getActiveMeshGenerator();
+      if (generator) {
+        // Use mesh generator for tile rendering
+        return generator.generateTileMesh(vox, {
+          unit,
+          hasStairBelow,
+          hasStairAbove,
+          isEmptyRoom
+        });
+      }
+    } catch (err) {
+      // Fall back to legacy renderer if generator not initialized or fails
+      if (window.__DEBUG_MESH_GENERATORS__) {
+        console.warn('[WFC_MESH] Mesh generator not available, using legacy renderer:', err.message);
+      }
+    }
+  }
+
+  // LEGACY: Original rendering code (preserved for backward compatibility and stairs)
   if(isAllSolid(vox)) return solidGroup(THREE,unit,cache);
   const group=new (THREE.Group||function(){this.children=[];this.add=o=>this.children.push(o);})(); 
   const getGeometry=makeGeometryFactory(THREE,unit); 

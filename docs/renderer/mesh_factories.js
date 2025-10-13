@@ -1,8 +1,38 @@
 // mesh_factories.js
 // Shared geometry/material helpers for tile mesh construction.
+import { getLayerMetrics } from '../utils/voxel-to-world.js';
 const MATERIAL_CACHE = new WeakMap();
 export const getMaterialCache = (THREE)=>{ let c=MATERIAL_CACHE.get(THREE); if(!c){ c={}; MATERIAL_CACHE.set(THREE,c);} return c; };
 export const isAllSolid = (vox)=>{ for(let z=0;z<3;z++) for(let y=0;y<3;y++) for(let x=0;x<3;x++) if(vox[z][y][x]!==1) return false; return true; };
 export function makeGeometryFactory(THREE, unit){ const cache={}; return kind=>{ if(cache[kind]) return cache[kind]; const BG=THREE.BoxGeometry||function(){}; const f=unit/3; let g; switch(kind){case 'floor':case 'ceiling': g=new BG(f,f*0.1,f); break; case 'wall_xMajor': g=new BG(unit,unit,f*0.1); break; case 'wall_zMajor': g=new BG(f*0.1,unit,unit); break; case 'wall_pillar': g=new BG(f*0.3,unit,f*0.3); break; case 'mid': g=new BG(f*0.6,unit,f*0.6); break; default: g=new BG(f,f,f);} cache[kind]=g; return g; }; }
 export function makeMaterialFactory(THREE){ const cache=getMaterialCache(THREE); const M=THREE.MeshStandardMaterial||THREE.MeshPhongMaterial||function(c){this.color=c.color;}; const noise=color=>{ try{ if(!THREE.CanvasTexture||!document||navigator?.userAgent?.includes('jsdom')) return null; const s=32,c=document.createElement('canvas'); c.width=c.height=s; const ctx=c.getContext?.('2d'); if(!ctx||!ctx.createImageData) return null; const r=(color>>16)&255,g=(color>>8)&255,b=color&255,img=ctx.createImageData(s,s); for(let i=0;i<img.data.length;i+=4){ const n=(Math.random()*30-15)|0; img.data[i]=r+n; img.data[i+1]=g+n; img.data[i+2]=b+n; img.data[i+3]=255;} ctx.putImageData(img,0,0); return new THREE.CanvasTexture(c);}catch{return null;}; }; return (key,color,label)=>{ if(cache[key]) return cache[key]; const tex=noise(color); const m=new M({color,map:tex||undefined}); m.userData={type:label}; cache[key]=m; return m; }; }
-export function buildStairs({THREE,group,dirInfo,unit,stairMat}){ if(!dirInfo) return; const {axis,dir}=dirInfo; const f=unit/3, Step=THREE.BoxGeometry||function(){}; for(let i=0;i<3;i++){ const geom=new Step(axis==='x'?f:unit/3,unit/3,axis==='z'?f:unit/3); const mesh=new (THREE.Mesh||function(){return {position:{set(){}}}})(geom,stairMat); if(mesh.position){ let x=unit/2,z=unit/2; const off=(i+0.5)*f; const start=(dir>0)?(unit/2-1.5*f):(unit/2+1.5*f); if(axis==='z') z=start+(dir>0?off:-off); else x=start+(dir>0?off:-off); const y=f*0.1+(i+0.5)*(unit/3); mesh.position.set(x,y,z);} group.add(mesh);} }
+export function buildStairs({ THREE, group, dirInfo, unit, stairMat }) {
+  if (!dirInfo) return;
+  const { axis, dir } = dirInfo;
+  const f = unit / 3;
+  const BoxGeom = THREE.BoxGeometry || function(){};
+  for (let i = 0; i < 3; i++) {
+    // Derive vertical placement from canonical layer metrics (middle layer)
+    const mid = getLayerMetrics(1, unit);
+    const stepHeight = mid.thickness / 3;
+
+    // Keep step footprint the same as before (unit/3 by unit/3), but height adapts to mode
+    const geom = new BoxGeom(f, stepHeight, f);
+    const MeshCtor = THREE.Mesh || function(){ return { position: { set(){} } }; };
+    const mesh = new MeshCtor(geom, stairMat);
+
+    if (mesh.position) {
+      // Preserve original X/Z stepping logic
+      let x = unit / 2, z = unit / 2;
+      const off = (i + 0.5) * f;
+      const start = (dir > 0) ? (unit / 2 - 1.5 * f) : (unit / 2 + 1.5 * f);
+      if (axis === 'z') z = start + (dir > 0 ? off : -off);
+      else x = start + (dir > 0 ? off : -off);
+
+      // Metrics-based vertical placement to align with current layer layout mode
+      const y = mid.base + (i + 0.5) * stepHeight;
+      mesh.position.set(x, y, z);
+    }
+    group.add(mesh);
+  }
+}

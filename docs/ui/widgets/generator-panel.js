@@ -3,6 +3,7 @@
  */
 
 import { getWidget } from '../widget-base.js';
+import { setLayerLayoutMode, getLayerLayoutMode } from '../../utils/voxel-to-world.js';
 
 const Widget = getWidget();
 
@@ -23,6 +24,7 @@ class GeneratorPanelWidget extends Widget {
                     <div class="panel-content">
                         <div id="size-controls-widget" class="control-widget"></div>
                         <div id="tileset-selector-widget" class="control-widget"></div>
+                        <div id="mesh-style-selector-widget" class="control-widget"></div>
                         <div id="advanced-options-widget" class="control-widget"></div>
                         <div id="generation-actions-widget" class="control-widget"></div>
                         
@@ -147,6 +149,14 @@ class GeneratorPanelWidget extends Widget {
             this.update({ collapsed: this.state.collapsed });
         }
 
+        // Apply saved layout mode (if any)
+        const savedLayoutMode = localStorage.getItem('layerLayoutMode');
+        if (savedLayoutMode) { 
+            try { 
+                setLayerLayoutMode(savedLayoutMode); 
+            } catch (_) {} 
+        }
+
         // Initialize sub-widgets when expanded
         if (!this.state.collapsed) {
             this.initializeSubWidgets();
@@ -174,6 +184,7 @@ class GeneratorPanelWidget extends Widget {
             // Sub-widgets are available in registry, just initialize them
             await this.initSizeControls();
             await this.initTilesetSelector();
+            await this.initMeshStyleSelector();
             await this.initAdvancedOptions();
             await this.initGenerationActions();
 
@@ -298,16 +309,69 @@ class GeneratorPanelWidget extends Widget {
         }
     }
 
+    async initMeshStyleSelector() {
+        const container = this.el.querySelector('#mesh-style-selector-widget');
+        if (!container || this.subWidgets.meshStyleSelector) {
+            return;
+        }
+
+        // Dynamically import the mesh style selector
+        const { MeshStyleSelectorWidget } = await import('./mesh-style-selector.js');
+        const widget = new MeshStyleSelectorWidget();
+        
+        // Initialize widget (awaits bootstrap promise internally)
+        await widget.init();
+        
+        // Mount to container with initial data from getData()
+        const initialData = widget.getData();
+        console.log('[GeneratorPanel] Mounting mesh style selector with data:', initialData);
+        widget.mount(container, initialData);
+        
+        // Handle style application - regenerate dungeon
+        widget.onApply(async (generatorId) => {
+            // Trigger regeneration with new style
+            const generateBtn = document.querySelector('[data-action="generate"]');
+            if (generateBtn) {
+                generateBtn.click();
+            }
+        });
+        
+        this.subWidgets.meshStyleSelector = widget;
+    }
+
     async initAdvancedOptions() {
         const container = this.el.querySelector('#advanced-options-widget');
         if (container && !this.subWidgets.advancedOptions) {
-            // Advanced options placeholder for now
+            // Render options: switch layer layout mode for mesh rendering
             container.innerHTML = `
-                <div class="advanced-options-placeholder">
-                    <div class="placeholder-title">Advanced Options</div>
-                    <p class="placeholder-text">Coming Soon - Additional generation parameters</p>
+                <div class="advanced-options">
+                    <div class="placeholder-title">Render Options</div>
+                    <label class="layout-mode-label" style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                        <span>Cell Layout</span>
+                        <select id="layout-mode-select" class="layout-mode-select" style="flex:0 0 auto;background:#0f2740;border:1px solid #1b4469;border-radius:3px;color:#cfe6ff;padding:4px 6px;">
+                            <option value="canonical">Canonical (thin floor/ceiling)</option>
+                            <option value="equalThirds">Equal Thirds (uniform boxes)</option>
+                        </select>
+                    </label>
+                    <p class="placeholder-text">This only affects rendering; generation and rules are unchanged.</p>
                 </div>
             `;
+
+            // Initialize select with current or saved mode
+            const select = container.querySelector('#layout-mode-select');
+            const saved = localStorage.getItem('layerLayoutMode');
+            const current = saved || (typeof getLayerLayoutMode === 'function' ? getLayerLayoutMode() : 'canonical');
+            select.value = current;
+
+            // Apply mode and trigger regeneration when changed
+            select.addEventListener('change', () => {
+                const mode = select.value;
+                try { setLayerLayoutMode(mode); } catch (_) {}
+                localStorage.setItem('layerLayoutMode', mode);
+                // Re-generate to reflect new rendering mode
+                this.handleGeneration();
+            });
+
             this.subWidgets.advancedOptions = true;
         }
     }

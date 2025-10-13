@@ -1,3 +1,5 @@
+import { TILE_SIZE } from './constants.js';
+
 // mini_viewer.js
 export function setupMiniViewer(tiles, meshUtil, THREE){
   const container = document.getElementById('mini-viewer');
@@ -129,8 +131,8 @@ function pruneMiniScene(scene){
 }
 
 function addSelectedTile(scene, origin, s, meshUtil, THREE){
-  const gm=meshUtil.buildTileMesh({THREE,prototypeIndex:s.prototypeIndex,rotationY:s.rotationY,unit:3});
-  const ox=(s.tx-origin.tx)*3, oy=(s.ty-origin.ty)*3, oz=(s.tz-origin.tz)*3;
+  const gm=meshUtil.buildTileMesh({THREE,prototypeIndex:s.prototypeIndex,rotationY:s.rotationY,unit:TILE_SIZE});
+  const ox=(s.tx-origin.tx)*TILE_SIZE, oy=(s.ty-origin.ty)*TILE_SIZE, oz=(s.tz-origin.tz)*TILE_SIZE;
   gm.position.set(ox,oy,oz); scene.add(gm);
 }
 
