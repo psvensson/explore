@@ -14,6 +14,8 @@ import { setupStairDemo } from './stair_demo.js';
 import { generateWFCDungeon } from './wfc_generate.js';
 import { TILE_SIZE } from './constants.js';
 import { TileAdapter } from './tile_adapter.js';
+import { trace } from '../utils/trace.js';
+import { CELL_STRIDE_XZ, LAYER_STRIDE_Y } from '../ui/utils/editor-grid.js';
 
 export function createRenderer({ THREE, containerId='threejs-canvas' }={}){
   console.log('[Render] createRenderer called', { containerId, hasThree: !!THREE, hasOrbitControls: !!THREE?.OrbitControls });
@@ -204,6 +206,9 @@ function makeInstance({scene, orbitCamera, fpsCamera, renderer, controls, THREE,
 
 function attachPublicAPIs(instance){
   const { orbitCamera, controls } = instance;
+
+  // Track occupied editor grid cells to prevent duplicates and enforce snapping
+  instance._editorOccupancy = new Set();
   instance.resetView = ()=>{ orbitCamera.position.set(0,40,110); controls.target.set(0,0,0); controls.update(); };
   instance.setZoomDistance = (dist)=>{ const tgt=controls.target.clone(); const dir=orbitCamera.position.clone().sub(tgt).normalize(); const clamp=Math.min(Math.max(dist, controls.minDistance||5), controls.maxDistance||300); orbitCamera.position.copy(dir.multiplyScalar(clamp).add(tgt)); controls.update(); };
   instance.pan = (dx,dy)=>{ const dist=orbitCamera.position.distanceTo(controls.target); const s=dist*0.0015; const x=-dx*s, y=dy*s; const te=orbitCamera.matrix.elements; const right=new instance.THREE.Vector3(te[0],te[1],te[2]).multiplyScalar(x); const up=new instance.THREE.Vector3(te[4],te[5],te[6]).multiplyScalar(y); controls.target.add(right).add(up); orbitCamera.position.add(right).add(up); controls.update(); };
@@ -232,6 +237,9 @@ function attachPublicAPIs(instance){
   instance.setEditorMode = (enabled) => {
     instance.editorMode = enabled;
     
+    // Reset occupancy map whenever switching modes
+    if (instance._editorOccupancy) instance._editorOccupancy.clear();
+
     if (enabled) {
       // Hide WFC-generated dungeon
       if (instance.tileGroup) instance.tileGroup.visible = false;
@@ -277,23 +285,61 @@ function attachPublicAPIs(instance){
     
     // Apply rotation (Y-axis)
     mesh.rotation.y = instance.THREE.MathUtils.degToRad(tile.rotation);
+
+    // Snap to integer grid indices and prevent duplicates at renderer level (defensive)
+    let gx = Math.round(tile.position.x);
+    let gy = Math.round(tile.position.y);
+    let gz = Math.round(tile.position.z);
+    const key = `${gx},${gy},${gz}`;
+
+    // Scoped trace: log attempt before duplicate-cell guard
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('renderer:render', {
+        step: 'attempt',
+        pos: [gx, gy, gz],
+        tileId: tile.id,
+        structureId: tile.structureId,
+        rot: tile.rotation
+      });
+    }
+
+    if (instance._editorOccupancy && instance._editorOccupancy.has(key)) {
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('renderer:render', {
+          step: 'skip',
+          reason: 'duplicate-cell',
+          pos: [gx, gy, gz],
+          tileId: tile.id
+        });
+      }
+      console.warn('[Renderer] Prevented duplicate placement at occupied cell', { gx, gy, gz });
+      return null;
+    }
+    // normalize tile.position to snapped indices (in case caller passed non-integers)
+    if (tile.position.x !== gx || tile.position.y !== gy || tile.position.z !== gz) {
+      tile.position = { x: gx, y: gy, z: gz };
+    }
     
     // Place using grid indices; bypass clamp in editor mode
     if (instance.editorMode) {
+      // Place using tile-index stride:
+      // - X/Z stride must span the full 3×3 voxel width = 3 * TILE_SIZE
+      // - Y stride remains 1 tile-height = TILE_SIZE (floor+mid+ceiling stack)
       mesh.position.set(
-        tile.position.x * TILE_SIZE,
-        tile.position.y * TILE_SIZE,
-        tile.position.z * TILE_SIZE
+        tile.position.x * CELL_STRIDE_XZ,
+        tile.position.y * LAYER_STRIDE_Y,
+        tile.position.z * CELL_STRIDE_XZ
       );
     } else {
       // Keep clamp in non-editor contexts
       const clampedX = Math.max(-10, Math.min(10, tile.position.x));
       const clampedY = Math.max(0, Math.min(5, tile.position.y));
       const clampedZ = Math.max(-10, Math.min(10, tile.position.z));
+      // Non-editor: apply same stride convention to keep consistency
       mesh.position.set(
-        clampedX * TILE_SIZE,
-        clampedY * TILE_SIZE,
-        clampedZ * TILE_SIZE
+        clampedX * CELL_STRIDE_XZ,
+        clampedY * LAYER_STRIDE_Y,
+        clampedZ * CELL_STRIDE_XZ
       );
     }
 
@@ -311,6 +357,12 @@ function attachPublicAPIs(instance){
 
     instance.editorTiles.add(mesh);
 
+    // Track occupancy for the placed tile
+    if (instance._editorOccupancy) {
+      const ok = `${tile.position.x},${tile.position.y},${tile.position.z}`;
+      instance._editorOccupancy.add(ok);
+    }
+
     // Ensure editorTiles group is visible and part of the scene
     if (!instance.scene.children.includes(instance.editorTiles)) {
       instance.scene.add(instance.editorTiles);
@@ -321,6 +373,14 @@ function attachPublicAPIs(instance){
     // Force a render update to ensure visibility
     if (instance.renderer && instance.camera) {
       instance.renderer.render(instance.scene, instance.camera);
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('renderer:render', {
+          step: 'commit',
+          pos: [gx, gy, gz],
+          tileId: tile.id,
+          editorTiles: instance.editorTiles.children.length
+        });
+      }
       console.log('[Renderer] Editor tile rendered and scene updated:', {
         editorTilesVisible: instance.editorTiles.visible,
         totalEditorTiles: instance.editorTiles.children.length
@@ -334,13 +394,27 @@ function attachPublicAPIs(instance){
     while (instance.editorTiles.children.length > 0) {
       instance.editorTiles.remove(instance.editorTiles.children[0]);
     }
+    if (instance._editorOccupancy) instance._editorOccupancy.clear();
   };
   
     instance.removeEditorTile = (tileId) => {
       const mesh = instance.editorTiles.children.find(
         child => child.userData.tileId === tileId
       );
-      if (mesh) instance.editorTiles.remove(mesh);
+      if (mesh) {
+        // Update occupancy based on snapped grid indices derived from mesh position
+        try {
+          // Recover original tile indices from world coords:
+          // - X/Z were scaled by (3 * TILE_SIZE)
+          // - Y was scaled by TILE_SIZE
+          const gx = Math.round(mesh.position.x / CELL_STRIDE_XZ);
+          const gy = Math.round(mesh.position.y / LAYER_STRIDE_Y);
+          const gz = Math.round(mesh.position.z / CELL_STRIDE_XZ);
+          const key = `${gx},${gy},${gz}`;
+          if (instance._editorOccupancy) instance._editorOccupancy.delete(key);
+        } catch (_) {}
+        instance.editorTiles.remove(mesh);
+      }
     };
 
     // Helper: get all meshes belonging to a specific tileId (tighter filtering)

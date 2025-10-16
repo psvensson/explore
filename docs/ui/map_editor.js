@@ -8,6 +8,7 @@
 import { MapEditorState } from '../dungeon/map_editor_state.js';
 import { GridOverlay } from './utils/grid-overlay.js';
 import { highlightInGroup, clearInGroup } from '../renderer/selection_highlight.js';
+import { trace } from '../utils/trace.js';
 
 /**
  * MapEditor - Orchestrates user interaction for manual tile placement
@@ -182,6 +183,38 @@ export class MapEditor {
       tileCount: document.getElementById('tile-count')
     };
     
+    // Add Trace toggle programmatically to avoid HTML churn
+    const controlsBar = this.container.querySelector('.map-editor-controls');
+    if (controlsBar) {
+      const traceGroup = document.createElement('div');
+      traceGroup.className = 'control-group';
+      traceGroup.style.display = 'flex';
+      traceGroup.style.flexDirection = 'row';
+      traceGroup.style.alignItems = 'center';
+      traceGroup.style.justifyContent = 'flex-start';
+      traceGroup.style.gap = '8px';
+
+      const label = document.createElement('label');
+      label.style.fontWeight = 'bold';
+      label.textContent = 'Debug';
+      traceGroup.appendChild(label);
+
+      const btn = document.createElement('button');
+      btn.id = 'trace-toggle-btn';
+      btn.textContent = 'Enable Trace';
+      // Make the toggle visible and consistent with other controls
+      btn.style.padding = '4px 8px';
+      btn.style.background = '#333';
+      btn.style.color = '#fff';
+      btn.style.border = '1px solid #666';
+      btn.style.borderRadius = '4px';
+      btn.style.cursor = 'pointer';
+      traceGroup.appendChild(btn);
+
+      controlsBar.appendChild(traceGroup);
+      this.controls.traceToggle = btn;
+    }
+
     console.log('[MapEditor] DOM elements found:', {
       canvas: !!this.canvas,
       palette: !!this.palette,
@@ -294,6 +327,45 @@ export class MapEditor {
     this.controls.clear.addEventListener('click', () => this.clearAll());
     this.controls.save.addEventListener('click', () => this.saveMap());
     this.controls.load.addEventListener('click', () => this.loadMap());
+
+    // Trace toggle wiring
+    const setTrace = (on) => {
+      try {
+        if (on) {
+          if (typeof window !== 'undefined') window.__EDITOR_TRACE__ = true;
+          if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem('editor_trace','1');
+        } else {
+          if (typeof window !== 'undefined') window.__EDITOR_TRACE__ = false;
+          if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem('editor_trace');
+        }
+      } catch (_) {}
+    };
+    const isTrace = () => {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage && window.localStorage.getItem('editor_trace') === '1') return true;
+        if (typeof window !== 'undefined' && window.__EDITOR_TRACE__) return true;
+      } catch (_) {}
+      return false;
+    };
+    const updateTraceBtn = () => {
+      if (this.controls && this.controls.traceToggle) {
+        this.controls.traceToggle.textContent = isTrace() ? 'Disable Trace' : 'Enable Trace';
+      }
+    };
+    if (this.controls.traceToggle) {
+      this.controls.traceToggle.addEventListener('click', () => {
+        const next = !isTrace();
+        setTrace(next);
+        updateTraceBtn();
+        if (next) {
+          console.log('[MapEditor] Trace enabled. Tip: logs are under categories ui:*, state:*, renderer:*');
+        } else {
+          console.log('[MapEditor] Trace disabled.');
+        }
+      });
+      // Initialize label based on current setting
+      updateTraceBtn();
+    }
     
     // Canvas interaction
     this.canvas.addEventListener('mousemove', this.handleMouseMove);
@@ -383,10 +455,15 @@ export class MapEditor {
         this.currentRotation = (existingTile.rotation + 90) % 360;
         this.state.removeTile(x, y, z);
         this.renderer.removeEditorTile(existingTile.id);
-        const rotatedTile = this.state.placeTile(x, y, z, this.currentStructureId, this.currentRotation);
-        this.renderer.renderEditorTile(rotatedTile);
-        this.updateRotationDisplay();
-        console.log('[MapEditor] Rotated existing tile:', rotatedTile);
+        const res = this.state.tryPlaceTile(x, y, z, this.currentStructureId, this.currentRotation);
+        if (res.ok) {
+          const rotatedTile = res.tile;
+          this.renderer.renderEditorTile(rotatedTile);
+          this.updateRotationDisplay();
+          console.log('[MapEditor] Rotated existing tile:', rotatedTile);
+        } else {
+          console.warn('[MapEditor] Rotation placement blocked:', { x, y, z, reason: res.reason });
+        }
       } else if (this.mode === 'placement' && existingTile) {
         this.currentStructureId = existingTile.structureId;
         console.log('[MapEditor] Selected existing tile for placement:', existingTile);
@@ -576,7 +653,38 @@ export class MapEditor {
       this.controls.cursorPosition.textContent = 'Position: -';
     }
     
-    // Update overlay with hover feedback
+    // Update overlay with hover feedback (volumetric-aware)
+    if (gridPos) {
+      let allowed = false;
+      if (this.currentStructureId) {
+        const res = this.state.canPlaceTileAt(
+          gridPos.x,
+          this.currentLayer,
+          gridPos.z,
+          this.currentStructureId,
+          this.currentRotation
+        );
+        allowed = !!(res && res.ok);
+      } else {
+        // Fallback to simple cell-based check when no structure is selected
+        allowed = !this.state.isOccupied(gridPos.x, this.currentLayer, gridPos.z);
+      }
+      this.overlay.placementAllowed = allowed;
+      this.canvas.style.cursor = allowed ? 'crosshair' : 'not-allowed';
+      // Scoped trace (log only when state changes for this cell)
+      if (trace && trace.enabled && trace.enabled()) {
+        const key = `${gridPos.x},${this.currentLayer},${gridPos.z}`;
+        trace.logOnChange('ui:hover', key, {
+          pos: [gridPos.x, this.currentLayer, gridPos.z],
+          allowed,
+          structureId: this.currentStructureId,
+          rot: this.currentRotation
+        });
+      }
+    } else {
+      this.overlay.placementAllowed = false;
+      this.canvas.style.cursor = 'default';
+    }
     this.overlay.hoveredCell = gridPos;
     this.overlay.render();
   }
@@ -643,14 +751,35 @@ export class MapEditor {
   }
 
   placeOrReplaceTile(existingTile, x, y, z) {
-    // Prevent duplicate placement at same coordinates
-    const duplicateTile = this.state.getTile(x, y, z);
-    if (duplicateTile) {
-      console.warn('[MapEditor] Tile already exists at this position, skipping placement:', { x, y, z, duplicateTile });
+    // Generate a placement trace id for correlating logs across UI -> State -> Renderer
+    const traceId = trace && trace.newId ? trace.newId() : undefined;
+    if (this.state) this.state._currentTraceId = traceId;
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('ui:click', {
+        id: traceId,
+        attempt: 'place',
+        pos: [x, y, z],
+        structureId: this.currentStructureId,
+        rot: this.currentRotation
+      });
+    }
+
+    const res = this.state.tryPlaceTile(x, y, z, this.currentStructureId, this.currentRotation);
+    if (!res.ok) {
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('ui:click', { id: traceId, result: 'deny', reason: res.reason, pos: [x, y, z] });
+      }
+      console.warn('[MapEditor] Placement blocked:', { x, y, z, reason: res.reason });
+      // brief visual cue
+      this.overlay.placementAllowed = false;
+      this.overlay.render();
       return;
     }
 
-    const tile = this.state.placeTile(x, y, z, this.currentStructureId, this.currentRotation);
+    const tile = res.tile;
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('ui:click', { id: traceId, result: 'placed', pos: [x, y, z], tileId: tile.id, structureId: tile.structureId, rot: tile.rotation });
+    }
     this.renderer.renderEditorTile(tile);
     this.updateTileCount();
 

@@ -3,8 +3,9 @@
  * Canvas-based grid visualization and raycasting for map editor
  */
 
-import { TILE_SIZE } from '../../renderer/constants.js';
 import { ScreenSpaceMapper } from '../../renderer/screen_space_mapper.js';
+import { trace } from '../../utils/trace.js';
+import { CELL_STRIDE_XZ, LAYER_STRIDE_Y } from './editor-grid.js';
 
 export class GridOverlay {
   constructor(canvas, camera, THREE, renderer = null) {
@@ -24,11 +25,16 @@ export class GridOverlay {
     this.highlightedCell = null;
     this.ghostTile = null; // { structureId, rotation }
     this.visible = false;
+    // Placement validation flag from MapEditor; affects hover coloring
+    this.placementAllowed = true;
     // Debug marker for ray hit verification
     this._debugMarkerScreen = null;
     
-    // Grid settings
-    this.gridSize = TILE_SIZE; // match renderer tile unit (use shared constant)
+    // Grid settings (unified canonical mapping)
+    // - layerStrideY: vertical step per layer (tile height stack)
+    // - cellStrideXZ: horizontal step per tile cell (full 3×3 voxel width)
+    this.layerStrideY = LAYER_STRIDE_Y;
+    this.cellStrideXZ = CELL_STRIDE_XZ;
     this.gridExtent = 10; // Show ±10 tiles from origin
     
     // Raycasting plane
@@ -51,7 +57,7 @@ export class GridOverlay {
     if (typeof window === 'undefined' || !this.THREE) return;
     
     // Compute grid plane height for current layer and set a horizontal raycast plane at y = planeY
-    const planeY = this.currentLayer * this.gridSize;
+    const planeY = this.currentLayer * this.layerStrideY;
     const camDir = this.camera ? this.camera.getWorldDirection(new this.THREE.Vector3()) : new this.THREE.Vector3(0, -1, 0);
     const camPos = this.camera ? this.camera.position.clone() : new this.THREE.Vector3(0, 50, 0);
 
@@ -138,7 +144,8 @@ export class GridOverlay {
         camera: !!this.camera,
         raycastPlane: !!this.raycastPlane,
         currentLayer: this.currentLayer,
-        gridSize: this.gridSize
+        layerStrideY: this.layerStrideY,
+      cellStrideXZ: this.cellStrideXZ
       });
     }
     
@@ -154,7 +161,7 @@ export class GridOverlay {
 
     // Ensure raycast plane exists; horizontal at current layer (y = planeY)
     if (!this.raycastPlane) {
-      const planeY = this.currentLayer * this.gridSize;
+      const planeY = this.currentLayer * this.layerStrideY;
       this.raycastPlane = new this.THREE.Plane(new this.THREE.Vector3(0, 1, 0), -planeY);
     }
 
@@ -162,27 +169,38 @@ export class GridOverlay {
     try {
       const overlayRect = this.canvas.getBoundingClientRect();
       const basisRect = rEl && rEl.getBoundingClientRect ? rEl.getBoundingClientRect() : overlayRect;
-      console.log('[GridOverlay] 🧮 Coordinate alignment debug:', {
-        canvasRect: { left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height },
-        rendererRect: rEl ? { left: basisRect.left, top: basisRect.top, width: basisRect.width, height: basisRect.height } : null,
-        ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) }
-      });
+      if (trace && trace.enabled && trace.enabled()) {
+        console.log('[GridOverlay] 🧮 Coordinate alignment debug:', {
+          canvasRect: { left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height },
+          rendererRect: rEl ? { left: basisRect.left, top: basisRect.top, width: basisRect.width, height: basisRect.height } : null,
+          ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) }
+        });
+      }
     } catch (_) {}
 
     // Focused debug logging for placement accuracy
     try {
       const overlayRect = this.canvas.getBoundingClientRect();
       const basisRect = rEl && rEl.getBoundingClientRect ? rEl.getBoundingClientRect() : overlayRect;
-      console.log('[GridOverlay] 🧩 Mouse → NDC → Raycast:', {
-        mouseInput: { x, y, clientX: window.event?.clientX, clientY: window.event?.clientY },
-        rect: { width: basisRect.width, height: basisRect.height, left: basisRect.left, top: basisRect.top },
-        ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) },
-        cameraPos: this.camera?.position,
-        cameraDir: this.camera?.getWorldDirection(new this.THREE.Vector3())
-      });
+      if (trace && trace.enabled && trace.enabled()) {
+        console.log('[GridOverlay] 🧩 Mouse → NDC → Raycast:', {
+          mouseInput: { x, y, clientX: window.event?.clientX, clientY: window.event?.clientY },
+          rect: { width: basisRect.width, height: basisRect.height, left: basisRect.left, top: basisRect.top },
+          ndc: { x: ndc.x.toFixed(3), y: ndc.y.toFixed(3) },
+          cameraPos: this.camera?.position,
+          cameraDir: this.camera?.getWorldDirection(new this.THREE.Vector3())
+        });
+      }
     } catch (_) {}
 
-    const intersection = this.mapper.intersectPlaneY(this.camera, this.canvas, rEl, x, y, this.currentLayer * this.gridSize);
+    const intersection = this.mapper.intersectPlaneY(
+      this.camera,
+      this.canvas,
+      rEl,
+      x,
+      y,
+      this.currentLayer * this.layerStrideY
+    );
 
     if (!intersection) {
       console.warn('[GridOverlay] ❌ No intersection with raycast plane (mapper)');
@@ -190,8 +208,8 @@ export class GridOverlay {
     }
 
     // Log intersection and grid mapping
-    const gridX = Math.floor(intersection.x / this.gridSize + 0.5);
-    const gridZ = Math.floor(intersection.z / this.gridSize + 0.5);
+    const gridX = Math.floor(intersection.x / this.cellStrideXZ + 0.5);
+    const gridZ = Math.floor(intersection.z / this.cellStrideXZ + 0.5);
     const result = { x: gridX, y: this.currentLayer, z: gridZ };
     
     // Debug: project intersection back to screen to verify alignment
@@ -205,7 +223,8 @@ export class GridOverlay {
         z: intersection.z.toFixed(2)
       },
       grid: result,
-      gridSize: this.gridSize
+        layerStrideY: this.layerStrideY,
+        cellStrideXZ: this.cellStrideXZ
     });
 
     // Explicit numeric logging for debugging
@@ -233,9 +252,9 @@ export class GridOverlay {
    */
   gridToWorld(gridX, gridY, gridZ) {
     return {
-      x: gridX * this.gridSize,
-      y: gridY * this.gridSize,
-      z: gridZ * this.gridSize
+      x: gridX * this.cellStrideXZ,
+      y: gridY * this.layerStrideY,
+      z: gridZ * this.cellStrideXZ
     };
   }
 
@@ -245,13 +264,13 @@ export class GridOverlay {
   getGridPoints() {
     const points = [];
     const extent = this.gridExtent || 10;
-    const y = this.currentLayer * this.gridSize;
+    const y = this.currentLayer * this.layerStrideY;
     
     for (let x = -extent; x <= extent; x++) {
       for (let z = -extent; z <= extent; z++) {
         points.push({
           grid: { x, y: this.currentLayer, z },
-          world: { x: x * this.gridSize, y, z: z * this.gridSize }
+          world: { x: x * this.cellStrideXZ, y, z: z * this.cellStrideXZ }
         });
       }
     }
@@ -297,13 +316,16 @@ export class GridOverlay {
         this.ctx.stroke();
       }
       if (this.hoveredCell) {
-        const worldX = this.hoveredCell.x * this.gridSize;
-        const worldZ = this.hoveredCell.z * this.gridSize;
-        const worldY = this.currentLayer * this.gridSize;
+        const worldX = this.hoveredCell.x * this.cellStrideXZ;
+        const worldZ = this.hoveredCell.z * this.cellStrideXZ;
+        const worldY = this.currentLayer * this.layerStrideY;
         const center = this.worldToScreen({ x: worldX, y: worldY, z: worldZ });
         if (center) {
-          this.ctx.fillStyle = 'rgba(100, 200, 255, 0.3)';
-          this.ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
+          const allowed = !!this.placementAllowed;
+          const fill = allowed ? 'rgba(100, 200, 255, 0.3)' : 'rgba(255, 80, 80, 0.25)';
+          const stroke = allowed ? 'rgba(100, 200, 255, 0.8)' : 'rgba(255, 80, 80, 0.9)';
+          this.ctx.fillStyle = fill;
+          this.ctx.strokeStyle = stroke;
           this.ctx.lineWidth = 2;
           const halfSize = 12;
           this.ctx.fillRect(center.x - halfSize, center.y - halfSize, halfSize * 2, halfSize * 2);
@@ -330,19 +352,19 @@ export class GridOverlay {
     ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
     ctx.lineWidth = 1;
     
-    const planeY = this.currentLayer * this.gridSize;
+    const planeY = this.currentLayer * this.layerStrideY;
     
     // Draw horizontal lines (along X axis)
     for (let z = -this.gridExtent; z <= this.gridExtent; z++) {
       const start = new window.THREE.Vector3(
-        -this.gridExtent * this.gridSize,
+        -this.gridExtent * this.cellStrideXZ,
         planeY,
-        z * this.gridSize
+        z * this.cellStrideXZ
       );
       const end = new window.THREE.Vector3(
-        this.gridExtent * this.gridSize,
+        this.gridExtent * this.cellStrideXZ,
         planeY,
-        z * this.gridSize
+        z * this.cellStrideXZ
       );
       
       this.drawLine3D(ctx, start, end);
@@ -351,14 +373,14 @@ export class GridOverlay {
     // Draw vertical lines (along Z axis)
     for (let x = -this.gridExtent; x <= this.gridExtent; x++) {
       const start = new window.THREE.Vector3(
-        x * this.gridSize,
+        x * this.cellStrideXZ,
         planeY,
-        -this.gridExtent * this.gridSize
+        -this.gridExtent * this.cellStrideXZ
       );
       const end = new window.THREE.Vector3(
-        x * this.gridSize,
+        x * this.cellStrideXZ,
         planeY,
-        this.gridExtent * this.gridSize
+        this.gridExtent * this.cellStrideXZ
       );
       
       this.drawLine3D(ctx, start, end);
@@ -372,7 +394,7 @@ export class GridOverlay {
     if (typeof window === 'undefined' || !window.THREE) return;
     
     const worldPos = this.gridToWorld(gridPos.x, gridPos.y, gridPos.z);
-    const halfSize = this.gridSize / 2;
+    const halfSize = this.cellStrideXZ / 2;
     
     // Define cell corners
     const corners = [

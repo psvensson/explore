@@ -5,6 +5,9 @@
  * Manages grid-based tile placement with undo/redo support
  */
 
+import { TileStructures } from './tile_structures.js';
+import { trace } from '../utils/trace.js';
+
 export class PlacedTile {
   constructor(structureId, rotation, position) {
     this.id = `tile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -151,6 +154,206 @@ export class MapEditorState {
   }
 
   /**
+   * Check if a cell is occupied
+   */
+  isOccupied(x, y, z) {
+    const layer = this.layers.get(y);
+    if (!layer) return false;
+    const key = this._getKey(x, z);
+    return layer.has(key);
+  }
+
+  /**
+   * Compute solid world-voxel coordinates for a given tile placement.
+   * Returns { voxels: string[], outOfBounds: boolean, known: boolean }
+   */
+  _computeSolidWorldVoxels(structureId, rotation, x, y, z) {
+    try {
+      const all = TileStructures?.structures || {};
+      const base = all[structureId];
+      if (!base) {
+        return { voxels: [], outOfBounds: false, known: false };
+      }
+      const obj = rotation ? TileStructures.rotate(base, rotation) : base;
+      const layers = obj.structure; // [layerY][rowZ][colX]
+      const size = (layers && layers[0] && layers[0].length) || 3;
+
+      // Map per-tile 3x3x3 voxels into a global voxel grid consistent across tiles:
+      // - x,z: world = tileIndex * size + (local - centerOffset), where centerOffset=1 for 3x3
+      // - y: align "mid" layer (index 1) to the tile's currentLayer for intuitive editing
+      //      worldY = y + (ly - 1)
+      const centerOffset = 1;
+      const voxels = [];
+      for (let ly = 0; ly < layers.length; ly++) {
+        const worldY = y + (ly - centerOffset);
+        const layer = layers[ly];
+        for (let rz = 0; rz < size; rz++) {
+          const row = layer[rz];
+          for (let cx = 0; cx < size; cx++) {
+            const v = row[cx];
+            // Treat any non-zero voxel (SOLID or STAIR) as occupying volume
+            if (v && v !== 0) {
+              const worldX = x * size + (cx - centerOffset);
+              const worldZ = z * size + (rz - centerOffset);
+              voxels.push(`${worldX},${worldY},${worldZ}`);
+            }
+          }
+        }
+      }
+      return { voxels, outOfBounds: false, known: true };
+    } catch (_) {
+      return { voxels: [], outOfBounds: false, known: false };
+    }
+  }
+
+  /**
+   * Determine if placing the given tile would overlap any existing solids.
+   * Returns { overlap: boolean, reason?: string }
+   */
+  _wouldOverlapExisting(x, y, z, structureId, rotation) {
+    const { voxels: target, known } = this._computeSolidWorldVoxels(structureId, rotation, x, y, z);
+    if (!known) {
+      // Unknown structure: skip volumetric checks (fallback to simple cell occupancy)
+      return { overlap: false };
+    }
+    // Build a voxel -> tileId map for quick conflict attribution (cap later for logs)
+    const voxelToTile = new Map();
+    const allTiles = this.getAllTiles();
+    for (const t of allTiles) {
+      const { voxels, known: k2 } = this._computeSolidWorldVoxels(
+        t.structureId,
+        t.rotation,
+        t.position.x,
+        t.position.y,
+        t.position.z
+      );
+      if (!k2) continue;
+      for (const v of voxels) {
+        if (!voxelToTile.has(v)) voxelToTile.set(v, t.id);
+      }
+    }
+    const colliders = new Set();
+    for (const v of target) {
+      if (voxelToTile.has(v)) {
+        colliders.add(voxelToTile.get(v));
+        // Early exit if we have enough info
+        if (colliders.size >= 3) break;
+      }
+    }
+    if (colliders.size > 0) {
+      return { overlap: true, reason: 'overlap', colliders: Array.from(colliders) };
+    }
+    return { overlap: false };
+  }
+
+  /**
+   * High-level placement check that considers cell occupancy and volumetric overlap.
+   * Returns { ok: boolean, reason?: string }
+   */
+  canPlaceTileAt(x, y, z, structureId, rotation) {
+    if (!this.canPlaceAt(x, y, z)) {
+      const res = { ok: false, reason: 'occupied' };
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('state:placement', {
+          id: this._currentTraceId,
+          action: 'deny',
+          reason: res.reason,
+          pos: [x, y, z],
+          structureId,
+          rot: rotation
+        });
+      }
+      return res;
+    }
+    const vol = this._wouldOverlapExisting(x, y, z, structureId, rotation);
+    if (vol.overlap) {
+      const res = { ok: false, reason: vol.reason || 'overlap' };
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('state:collision', {
+          id: this._currentTraceId,
+          pos: [x, y, z],
+          structureId,
+          rot: rotation,
+          colliders: vol.colliders || []
+        });
+        trace.log('state:placement', {
+          id: this._currentTraceId,
+          action: 'deny',
+          reason: res.reason,
+          pos: [x, y, z],
+          structureId,
+          rot: rotation
+        });
+      }
+      return res;
+    }
+    const res = { ok: true };
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('state:placement', {
+        id: this._currentTraceId,
+        action: 'ok',
+        pos: [x, y, z],
+        structureId,
+        rot: rotation
+      });
+    }
+    return res;
+  }
+
+  /**
+   * Determine if a tile can be placed at a cell
+   * Future rules can extend this (e.g., multi-cell footprints, adjacency)
+   */
+  canPlaceAt(x, y, z) {
+    return !this.isOccupied(x, y, z);
+  }
+
+  /**
+   * Try to place a tile; enforces placement policy.
+   * Returns { ok: boolean, tile?: PlacedTile, reason?: string }
+   */
+  tryPlaceTile(x, y, z, structureId, rotation) {
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('state:placement', {
+        id: this._currentTraceId,
+        action: 'try',
+        pos: [x, y, z],
+        structureId,
+        rot: rotation
+      });
+    }
+    const check = this.canPlaceTileAt(x, y, z, structureId, rotation);
+    if (!check.ok) {
+      this._emit('invalidPlacement', { x, y, z, reason: check.reason });
+      if (trace && trace.enabled && trace.enabled()) {
+        trace.log('state:placement', {
+          id: this._currentTraceId,
+          action: 'deny',
+          reason: check.reason,
+          pos: [x, y, z],
+          structureId,
+          rot: rotation
+        });
+      }
+      return { ok: false, reason: check.reason };
+    }
+    const tile = new PlacedTile(structureId, rotation, { x, y, z });
+    const command = new PlaceTileCommand(this, tile);
+    this._executeCommand(command);
+    if (trace && trace.enabled && trace.enabled()) {
+      trace.log('state:placement', {
+        id: this._currentTraceId,
+        action: 'commit',
+        pos: [x, y, z],
+        structureId,
+        rot: rotation,
+        tileId: tile.id
+      });
+    }
+    return { ok: true, tile };
+  }
+
+  /**
    * Place a tile on the grid
    */
   placeTile(x, y, z, structureId, rotation) {
@@ -214,6 +417,13 @@ export class MapEditorState {
       this.history.past.shift();
     }
     this._emit('cleared', null);
+  }
+
+  /**
+   * Clear all tiles (alias for backward compatibility)
+   */
+  clearAll() {
+    return this.clear();
   }
 
   /**
@@ -316,6 +526,13 @@ export class MapEditorState {
   }
 
   /**
+   * Serialize to string (for file save)
+   */
+  serialize() {
+    return JSON.stringify(this.toJSON());
+  }
+
+  /**
    * Deserialize from JSON
    */
   static fromJSON(data) {
@@ -344,6 +561,33 @@ export class MapEditorState {
     state.history = { past: [], future: [] };
     
     return state;
+  }
+
+  /**
+   * Deserialize from string and replace current state (for file load)
+   */
+  deserialize(text) {
+    const data = JSON.parse(text);
+    // Reset current state
+    this.layers = new Map();
+    if (data.tiles && Array.isArray(data.tiles)) {
+      data.tiles.forEach(tileData => {
+        const tile = PlacedTile.fromJSON(tileData);
+        this._placeTileInternal(tile);
+      });
+    }
+    if (data.currentLayer !== undefined) {
+      this.currentLayer = data.currentLayer;
+    }
+    if (data.selectedStructureId) {
+      this.selectedStructureId = data.selectedStructureId;
+    }
+    if (data.selectedRotation !== undefined) {
+      this.selectedRotation = data.selectedRotation;
+    }
+    // Reset history after load
+    this.history = { past: [], future: [] };
+    this._emit('loaded', null);
   }
 
   /**

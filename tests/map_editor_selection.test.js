@@ -90,7 +90,7 @@ describe('MapEditor Selection Behavior', () => {
 
     // 1) Place first tile by clicking empty grid -> adds tile_1 and highlights it
     editor.hoveredGrid = { x: 0, y: 0, z: 0 };
-    editor.state.placeTile = jest.fn((x, y, z, id, rot) => ({ id: 'tile_1', structureId: id, position: { x, y, z } }));
+    editor.state.tryPlaceTile = jest.fn((x, y, z, id, rot) => ({ ok: true, tile: { id: 'tile_1', structureId: id, position: { x, y, z } } }));
     editor.handleMouseClick({ clientX: 10, clientY: 10, shiftKey: false, button: 0 });
 
     // 2) Simulate existing second tile and click on it (selection path)
