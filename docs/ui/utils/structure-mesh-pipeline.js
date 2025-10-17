@@ -119,14 +119,28 @@ export class StructureMeshPipeline {
 
     const { buildTileMesh } = await import('../../renderer/wfc_tile_mesh.js');
     const { makeMaterialFactory } = await import('../../renderer/mesh_factories.js');
+    const vtw = await import('../../utils/voxel-to-world.js');
+    // Optional isotropic preview mode (cubic cells + equal spacing)
+    const isotropic = options && options.isotropicPreview === true;
+    const cubicTile = options && options.tileCubic === true; // Make entire tile cubic height (3 * unit)
+    const prevLayout = vtw.getLayerLayoutMode();
+    const prevCubic = vtw.getCubicCellDimensions();
+    const prevXZ = vtw.getXZSpacingMode ? vtw.getXZSpacingMode() : 'unit';
+    if (isotropic) {
+      vtw.setLayerLayoutMode(cubicTile ? 'cubicTile' : 'equalThirds');
+      vtw.setCubicCellDimensions(true);
+      if (vtw.setXZSpacingMode) vtw.setXZSpacingMode('layer');
+    }
 
     // 1. Normalize any incoming shape to canonical vox[z][y][x]
     const canonical = normalizeToCanonical(structureData);
 
     const cacheSignature = this._computeSignature(canonical);
+    // Include rendering mode in cache key to avoid mixing canonical vs cubic/equalThirds meshes
+    const modeToken = `${vtw.getLayerLayoutMode()}|${vtw.getCubicCellDimensions() ? 'C' : 'N'}|${vtw.getXZSpacingMode ? vtw.getXZSpacingMode() : 'unit'}`;
     const cacheKey = this._buildCacheKey({
       signature: cacheSignature,
-      prototypeId,
+      prototypeId: `${prototypeId}|${modeToken}`,
       unit
     });
 
@@ -152,6 +166,24 @@ export class StructureMeshPipeline {
       prototypes: [prototype],
       unit
     });
+    // Close gaps between cubic cells by aligning X/Z spacing to cell size (s = layer thickness)
+    try {
+      if (vtw.getLayerLayoutMode() === 'equalThirds' && vtw.getCubicCellDimensions && vtw.getCubicCellDimensions() && (!vtw.getXZSpacingMode || vtw.getXZSpacingMode() !== 'layer')) {
+        const metrics0 = vtw.getLayerMetrics ? vtw.getLayerMetrics(0, unit) : { thickness: unit / 3 };
+        const s = metrics0.thickness || (unit / 3);
+        const scaleXZ = s / unit;
+        this._traverse(mesh, (child) => {
+          if (child && child.position && typeof child.position.x === 'number' && typeof child.position.z === 'number') {
+            child.position.x *= scaleXZ;
+            child.position.z *= scaleXZ;
+          }
+        });
+      }
+    } catch (_) {}
+    // Restore global rendering modes to avoid affecting other code paths
+    vtw.setLayerLayoutMode(prevLayout);
+    vtw.setCubicCellDimensions(prevCubic);
+    if (vtw.setXZSpacingMode) vtw.setXZSpacingMode(prevXZ);
 
     // Ensure all materials and meshes carry the structureId for downstream tileId propagation
     this._traverse(mesh, (child) => {

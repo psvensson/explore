@@ -20,8 +20,44 @@ const CEILING_THICKNESS_RATIO = 0.1;
 // - equalThirds: three equal-height layers within a single tile height (uniform boxes per layer)
 let __LAYER_LAYOUT_MODE__ = 'canonical';
 
+// Optional: cubic per-cell geometry dimensions (width=height=depth)
+// When enabled, standard dimension helpers will return cubic sizes per layer
+let __CUBIC_CELL_DIMENSIONS__ = false;
+
+export function setCubicCellDimensions(enabled) {
+  __CUBIC_CELL_DIMENSIONS__ = !!enabled;
+  // Mirror to window for devtools
+  if (typeof window !== 'undefined') {
+    window.__CUBIC_CELL_DIMENSIONS__ = __CUBIC_CELL_DIMENSIONS__;
+  }
+}
+
+export function getCubicCellDimensions() {
+  return __CUBIC_CELL_DIMENSIONS__;
+}
+
+// XZ spacing mode: 'unit' (default canonical grid spacing) or 'layer' (use layer thickness for spacing).
+// In 'layer' mode with equalThirds, centers map to [-s, 0, +s] where s = unit/3.
+let __XZ_SPACING_MODE__ = 'unit';
+
+export function setXZSpacingMode(mode) {
+  const allowed = ['unit', 'layer'];
+  if (!allowed.includes(mode)) {
+    console.warn(`[voxel-to-world] Unsupported XZ spacing mode '${mode}', keeping '${__XZ_SPACING_MODE__}'`);
+    return;
+  }
+  __XZ_SPACING_MODE__ = mode;
+  if (typeof window !== 'undefined') {
+    window.__XZ_SPACING_MODE__ = mode;
+  }
+}
+
+export function getXZSpacingMode() {
+  return __XZ_SPACING_MODE__;
+}
+
 export function setLayerLayoutMode(mode) {
-  const allowed = ['canonical', 'equalThirds'];
+  const allowed = ['canonical', 'equalThirds', 'cubicTile'];
   if (!allowed.includes(mode)) {
     console.warn(`[voxel-to-world] Unsupported layer layout mode '${mode}', keeping '${__LAYER_LAYOUT_MODE__}'`);
     return;
@@ -38,6 +74,12 @@ export function getLayerLayoutMode() {
 }
 
 function computeLayerLayout(unit) {
+  // Special mode: cubicTile -> three layers, each thickness = unit (voxel = unit^3), total tile height = 3*unit
+  if (__LAYER_LAYOUT_MODE__ === 'cubicTile') {
+    const bases = [0, unit, 2 * unit];
+    const thicknesses = [unit, unit, unit];
+    return { bases, thicknesses };
+  }
   // Mode: equalThirds -> three equal-height layers that sum to one tile height (unit)
   // This makes floor/middle/ceiling uniform box heights within a tile.
   if (__LAYER_LAYOUT_MODE__ === 'equalThirds') {
@@ -92,10 +134,11 @@ export function getLayerMetrics(layerIndex, unit = 3) {
  */
 export function voxelToWorld(x, y, z, unit = 3) {
   const metrics = getLayerMetrics(y, unit);
+  const spacing = (typeof __XZ_SPACING_MODE__ !== 'undefined' && __XZ_SPACING_MODE__ === 'layer') ? metrics.thickness : unit;
   return {
-    x: (x - 1) * unit,  // Maps [0,1,2] → [-unit, 0, +unit]
+    x: (x - 1) * spacing,  // Maps [0,1,2] → [-spacing, 0, +spacing]
     y: metrics.base,
-    z: (z - 1) * unit   // Maps [0,1,2] → [-unit, 0, +unit]
+    z: (z - 1) * spacing   // Maps [0,1,2] → [-spacing, 0, +spacing]
   };
 }
 
@@ -164,6 +207,14 @@ export function voxelToWorldCeiling(x, y, z, unit = 3) {
  */
 export function getStandardCubeDimensions(unit = 3, layerIndex = 1) {
   const metrics = getLayerMetrics(layerIndex, unit);
+  if (__CUBIC_CELL_DIMENSIONS__) {
+    const s = metrics.thickness;
+    return {
+      width: s,
+      height: s,
+      depth: s
+    };
+  }
   return {
     width: unit,
     height: metrics.thickness,
@@ -178,6 +229,14 @@ export function getStandardCubeDimensions(unit = 3, layerIndex = 1) {
  */
 export function getStandardPlaneDimensions(unit = 3, layerIndex = 0) {
   const metrics = getLayerMetrics(layerIndex, unit);
+  if (__CUBIC_CELL_DIMENSIONS__) {
+    const s = metrics.thickness;
+    return {
+      width: s,
+      height: s,
+      depth: s
+    };
+  }
   return {
     width: unit,
     height: metrics.thickness,

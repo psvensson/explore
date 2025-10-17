@@ -4,12 +4,12 @@
 
 import { TILE_SIZE } from '../../renderer/constants.js';
 
-// One tile is a 3x3x3 voxel block with unit = TILE_SIZE.
-// Horizontal stride per tile cell (X/Z) spans full 3 voxels:
-export const CELL_STRIDE_XZ = TILE_SIZE * 3;
+ // One tile is a 3x3x3 voxel block with unit = TILE_SIZE.
+ // Horizontal stride per tile cell (X/Z) spans full 3 voxels:
+ export const CELL_STRIDE_XZ = TILE_SIZE * 3;
 
 // Vertical stride per layer (Y) uses one tile-height stack:
-export const LAYER_STRIDE_Y = TILE_SIZE;
+export const LAYER_STRIDE_Y = TILE_SIZE * 3;
 
 // Convert grid (tile indices) to world coordinates
 export function gridIndexToWorld(ix, iy, iz) {

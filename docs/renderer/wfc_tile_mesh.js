@@ -10,7 +10,9 @@ import { dbg } from '../utils/debug_log.js';
 import { buildFloor, buildCeiling, buildSolidCube } from './mesh_geometry_builders.js';
 import { 
   voxelToWorldCenter, 
-  getStandardCubeDimensions 
+  getStandardCubeDimensions,
+  getCubicCellDimensions,
+  getLayerMetrics
 } from '../utils/voxel-to-world.js';
 // Pluggable mesh generator system
 import { getActiveMeshGenerator } from './mesh-generators/index.js';
@@ -183,7 +185,14 @@ function placeNonWall(ctx){
     if (overrideWidth || overrideDepth) {
       const w = overrideWidth || unit;
       const d = overrideDepth || unit;
-      const h = unit * 0.1;
+      let h = unit * 0.1;
+      // In isotropic/cubic preview mode, use full cubic cell thickness to avoid flat height
+      try {
+        if (getCubicCellDimensions && getCubicCellDimensions()) {
+          const metrics = getLayerMetrics ? getLayerMetrics(y, unit) : { thickness: unit / 3 };
+          h = metrics.thickness || (unit / 3);
+        }
+      } catch (_) {}
       mesh.geometry = new THREE.BoxGeometry(w, h, d);
     }
     group.add(mesh);
@@ -194,7 +203,14 @@ function placeNonWall(ctx){
     if (overrideWidth || overrideDepth) {
       const w = overrideWidth || unit;
       const d = overrideDepth || unit;
-      const h = unit * 0.1;
+      let h = unit * 0.1;
+      // In isotropic/cubic preview mode, use full cubic cell thickness to avoid flat height
+      try {
+        if (getCubicCellDimensions && getCubicCellDimensions()) {
+          const metrics = getLayerMetrics ? getLayerMetrics(y, unit) : { thickness: unit / 3 };
+          h = metrics.thickness || (unit / 3);
+        }
+      } catch (_) {}
       mesh.geometry = new THREE.BoxGeometry(w, h, d);
     }
     group.add(mesh);

@@ -1900,6 +1900,7 @@ export class SimplifiedTilesetEditor {
       const tileMesh = await StructureMeshPipeline.createMeshFromStructureObject(THREERef, structure, { 
         materialFactory,
         unit: 3,
+        isotropicPreview: true,
         structureId
       });
       console.log('[TileViewer] Created authentic WFC tile mesh using pipeline (main scene mode)');
@@ -2546,7 +2547,8 @@ export class SimplifiedTilesetEditor {
     const materialFactory = makeMaterialFactory(THREERef);
     const group = await StructureMeshPipeline.createMeshFromStructure(THREERef, voxelData, { 
       materialFactory,
-      unit: 3
+      unit: 3,
+      isotropicPreview: true
     });
     console.log('[StructureEditor3D] Mesh created, children count:', group?.children?.length || 0);
     console.log('[StructureEditor3D] Mesh type:', group?.type, 'isGroup:', group?.isGroup);
@@ -2592,7 +2594,8 @@ export class SimplifiedTilesetEditor {
     try {
       // Update viewer using pipeline utility - explicitly pass production settings
       await StructureMeshPipeline.updateViewerWithStructure(viewer, voxelData, materialFactory, {
-        unit: 3
+        unit: 3,
+        isotropicPreview: true
       });
       console.log('[StructureEditor3D] Updated with authentic WFC mesh using pipeline (production mode)');
     } catch (error) {

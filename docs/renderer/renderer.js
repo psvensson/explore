@@ -280,7 +280,13 @@ function attachPublicAPIs(instance){
     const mesh = await StructureMeshPipeline.createMeshFromStructureId(
       instance.THREE,
       tile.structureId,
-      DEFAULT_TILE_STRUCTURES
+      DEFAULT_TILE_STRUCTURES,
+      {
+        unit: TILE_SIZE,
+        isotropicPreview: true,  // cubic per-voxel cells with spacing tied to thickness
+        tileCubic: true,         // make full tile height cubic: 3 * unit
+        structureId: tile.structureId
+      }
     );
     
     // Apply rotation (Y-axis)
